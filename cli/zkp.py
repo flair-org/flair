@@ -26,7 +26,9 @@ import asyncio
 import numpy as np
 
 from ..core import config as config_mod
-from .utils.local_commits import _get_flair_dir, _get_latest_local_commit
+from .utils.local_commits import _get_flair_dir, _get_latest_local_commit, _get_commit_by_hash, _get_head_info
+from .branch import _download_file, _ensure_ext
+from ..api.utils import _base_url, _client_with_auth
 
 app = typer.Typer()
 console = Console()
@@ -65,6 +67,74 @@ def _get_current_commit_hash() -> Optional[str]:
             return head_data.get("previousCommitHash")
     except Exception:
         return None
+
+def _fetch_zkp_data_for_commit(commit_hash: str) -> tuple[dict, Path]:
+    """Fetch ZKP data for a given commit hash, downloading if necessary."""
+    # 1. Try local cache first
+    local_commit_result = _get_commit_by_hash(commit_hash)
+    if local_commit_result:
+        commit_data, commit_dir = local_commit_result
+        if "zkp" in commit_data:
+            return commit_data["zkp"], commit_dir
+            
+    # 2. Try fetching from remote
+    console.print(f"[dim]Commit not found locally with ZKP. Fetching from remote...[/dim]")
+    repo_config = _load_repo_config()
+    repo_hash = repo_config.get("repoHash") or repo_config.get("metadata", {}).get("repoHash")
+    if not repo_hash:
+        raise typer.BadParameter("Repository not found. Run 'flair init' first.")
+        
+    head_info = _get_head_info()
+    if not head_info or not head_info.get("branchHash"):
+        raise typer.BadParameter("No active branch found. Cannot resolve remote commit context.")
+    branch_hash = head_info["branchHash"]
+    
+    with _client_with_auth() as client:
+        try:
+            url = f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/hash/{commit_hash}/pull"
+            resp = client.get(url, timeout=30)
+            resp.raise_for_status()
+            commit_data = resp.json().get("data")
+            if not commit_data:
+                raise ValueError("Commit not found on remote")
+        except Exception as e:
+            raise typer.BadParameter(f"Could not fetch remote commit: {e}")
+            
+    # Extract ZKML Proof URIs
+    zkml = (commit_data.get("params") or {}).get("ZKMLProof") or {}
+    if not zkml or not zkml.get("proof") or not zkml.get("proof").get("uri"):
+        raise typer.BadParameter("No ZKP artifacts found on remote for this commit.")
+        
+    # Download artifacts to a dedicated commit cache
+    zkp_dir = _get_zkp_dir() / commit_hash
+    zkp_dir.mkdir(parents=True, exist_ok=True)
+    
+    downloaded_files = {}
+    for key, label in [("proof", "proof"), ("settings", "settings"), ("verification_key", "verification_key")]:
+        obj = zkml.get(key)
+        if obj and obj.get("uri"):
+            ext = _ensure_ext(obj.get("extension") or ".zlib")
+            target = zkp_dir / f"{label}{ext if ext else ''}"
+            console.print(f"[dim]Downloading ZKP {label} artifact...[/dim]")
+            _download_file(obj["uri"], target)
+            downloaded_files[label] = target.name
+            
+    if "proof" not in downloaded_files:
+         raise typer.BadParameter("Failed to download complete ZKP artifacts.")
+         
+    # Reconstruct proof data dict
+    proof_data = {
+        "timestamp": commit_data.get("createdAt", datetime.now().isoformat()),
+        "model_file": commit_data.get("architecture", "unknown"),
+        "framework": commit_data.get("architecture", "unknown"),
+        "input_dims": "[unknown]", 
+        "proof_file": downloaded_files.get("proof"),
+        "verification_key_file": downloaded_files.get("verification_key"),
+        "settings_file": downloaded_files.get("settings"),
+        "base_commit_hash": commit_data.get("previousCommit")
+    }
+    
+    return proof_data, zkp_dir
 
 
 def _find_model_file(framework: str) -> Optional[Path]:
@@ -545,27 +615,33 @@ def create_zkp(
 
 
 @app.command("verify")
-def verify_zkp():
+def verify_zkp(
+    commit_hash: Optional[str] = typer.Argument(None, help="Commit hash to verify. If omitted, uses the latest local commit.")
+):
     """Verify a Zero-Knowledge Proof.
     
-    Reads the proof from the latest local commit and verifies it using
+    Reads the proof from the specified commit (or latest local) and verifies it using
     EZKL directly. Results are saved to .verified in the commit directory.
     
     Example:
         flair zkp verify
+        flair zkp verify e1f8c...
     """
     try:
-        local_commit_result = _get_latest_local_commit()
-        if not local_commit_result:
-            raise typer.BadParameter("No local commits found. Run 'flair add' first.")
-            
-        commit_data, commit_dir = local_commit_result
-        if "zkp" not in commit_data:
-            raise typer.BadParameter(
-                "No proof found in current commit. Run 'flair zkp create' first."
-            )
-            
-        proof_data = commit_data["zkp"]
+        if commit_hash:
+            proof_data, commit_dir = _fetch_zkp_data_for_commit(commit_hash)
+        else:
+            local_commit_result = _get_latest_local_commit()
+            if not local_commit_result:
+                raise typer.BadParameter("No local commits found. Run 'flair add' first.")
+                
+            commit_data, commit_dir = local_commit_result
+            if "zkp" not in commit_data:
+                raise typer.BadParameter(
+                    "No proof found in current commit. Run 'flair zkp create' first."
+                )
+                
+            proof_data = commit_data["zkp"]
         
         console.print("[cyan]Verifying Zero-Knowledge Proof...[/cyan]")
         console.print(f"[dim]Proof timestamp: {proof_data.get('timestamp')}[/dim]\n")
@@ -616,28 +692,32 @@ def verify_zkp():
 
 
 @app.command("status")
-def status():
+def status(
+    commit_hash: Optional[str] = typer.Argument(None, help="Commit hash to check. If omitted, uses the latest local commit.")
+):
     """Show ZKP status for the current repository.
     
     Displays information about created proofs and verification status
-    for the latest local commit.
+    for the specified commit.
     """
     try:
-        local_commit_result = _get_latest_local_commit()
-        if not local_commit_result:
-            console.print("[yellow]No local commits found. Run 'flair add' first.[/yellow]")
-            return
+        if commit_hash:
+            proof_data, commit_dir = _fetch_zkp_data_for_commit(commit_hash)
+        else:
+            local_commit_result = _get_latest_local_commit()
+            if not local_commit_result:
+                console.print("[yellow]No local commits found. Run 'flair add' first.[/yellow]")
+                return
+                
+            commit_data, commit_dir = local_commit_result
+            if "zkp" not in commit_data:
+                console.print("[yellow]No proofs created for this commit yet. Run 'flair zkp create'[/yellow]")
+                return
+                
+            proof_data = commit_data["zkp"]
             
-        commit_data, commit_dir = local_commit_result
-        
         console.print(f"\n[cyan]ZKP Status for {Path.cwd().name}[/cyan]")
         console.print(f"[dim]Location: {commit_dir}[/dim]\n")
-        
-        if "zkp" not in commit_data:
-            console.print("[yellow]No proofs created for this commit yet. Run 'flair zkp create'[/yellow]")
-            return
-            
-        proof_data = commit_data["zkp"]
         verified_file = commit_dir / ".verified"
         
         console.print("[cyan]Proof Information:[/cyan]")
