@@ -603,6 +603,12 @@ This strategy provides significant storage savings (95%+ for large commit histor
 
 ## Zero-Knowledge Proofs (ZKP)
 
+The Flair CLI uses the `ezkl` library to generate Zero-Knowledge Proofs for machine learning models. By configuring the inputs and outputs as public and the model parameters as private, the ZKP provides cryptographic guarantees for the following:
+
+- **Proof of Computational Integrity (Correct Execution):** It guarantees that the output was derived by correctly executing the exact computational graph of the model on a given input, without any shortcuts or tampering.
+- **Proof of Architecture:** The generated verification key and settings act as a strict cryptographic fingerprint of the model's architecture. It ensures that the model structure (layers, dimensions, operations) matches exactly what the author claims.
+- **Hidden Weights (Private Parameters):** The proof mathematically confirms that a valid set of parameters was used to run the model correctly, without ever revealing the actual weights to the verifier.
+
 ### Create a ZKP for your model
 Generates a zero-knowledge proof for the model in the current commit directory.
 Automatically detects model framework, converts to ONNX if needed, and generates
