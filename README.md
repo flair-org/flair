@@ -650,23 +650,23 @@ flair zkp create --model model.h5 --input-dims "[1, 224, 224, 3]"  # TensorFlow 
 **Note:** You cannot overwrite an existing ZKP. To create a new ZKP, run `flair add` to create a new commit first.
 
 ### Verify a ZKP
-Verifies a previously generated proof using EZKL directly.
+Verifies a previously generated proof using EZKL directly for the **latest local commit**.
 
 ```bash
 flair zkp verify
-## Decoding proof artifacts...
+## Decoding proof artifacts from zlib files...
 ## Running EZKL verification...
 ## ✓ Proof verified successfully!
-## Verification log saved to: .flair/.zkp/.verified
+## Verification log saved to: .flair/commits/<commit_hash>/.verified
 ```
 
 ### Check ZKP status
-Display information about created proofs and verification status.
+Display information about created proofs and verification status for the **latest local commit**.
 
 ```bash
 flair zkp status
 ## ZKP Status for my-model
-## Location: .flair/.zkp
+## Location: .flair/commits/<commit_hash>
 ##
 ## Proof Information:
 ##   Model: model.pt

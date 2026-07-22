@@ -548,31 +548,27 @@ def create_zkp(
 def verify_zkp():
     """Verify a Zero-Knowledge Proof.
     
-    Reads the proof from .flair/.zkp/proof.json and verifies it using
-    EZKL directly. Results are saved to .flair/.zkp/.verified
+    Reads the proof from the latest local commit and verifies it using
+    EZKL directly. Results are saved to .verified in the commit directory.
     
     Example:
         flair zkp verify
     """
     try:
-        zkp_dir = _get_zkp_dir()
-        proof_file = zkp_dir / "proof.json"
-        
-        if not proof_file.exists():
+        local_commit_result = _get_latest_local_commit()
+        if not local_commit_result:
+            raise typer.BadParameter("No local commits found. Run 'flair add' first.")
+            
+        commit_data, commit_dir = local_commit_result
+        if "zkp" not in commit_data:
             raise typer.BadParameter(
-                f"No proof found. Run 'flair zkp create' first.\n"
-                f"Expected: {proof_file}"
+                "No proof found in current commit. Run 'flair zkp create' first."
             )
-        
-        # Load proof data
-        with open(proof_file, 'r') as f:
-            proof_data = json.load(f)
+            
+        proof_data = commit_data["zkp"]
         
         console.print("[cyan]Verifying Zero-Knowledge Proof...[/cyan]")
         console.print(f"[dim]Proof timestamp: {proof_data.get('timestamp')}[/dim]\n")
-        
-        # Prepare ZKP directory
-        zkp_dir = _get_zkp_dir()
         
         # Run EZKL verification
         try:
@@ -580,7 +576,7 @@ def verify_zkp():
             asyncio.set_event_loop(loop)
             try:
                 verified = loop.run_until_complete(
-                    _verify_proof_with_ezkl(proof_data, zkp_dir)
+                    _verify_proof_with_ezkl(proof_data, commit_dir)
                 )
             finally:
                 loop.close()
@@ -597,10 +593,10 @@ def verify_zkp():
             "model_file": proof_data.get('model_file'),
             "framework": proof_data.get('framework'),
             "input_dims": proof_data.get('input_dims'),
-            "previous_commit_hash": proof_data.get('previous_commit_hash')
+            "previous_commit_hash": proof_data.get('base_commit_hash')
         }
         
-        verified_file = zkp_dir / ".verified"
+        verified_file = commit_dir / ".verified"
         with open(verified_file, 'w') as f:
             json.dump(verification_log, f, indent=2)
         
@@ -623,23 +619,26 @@ def verify_zkp():
 def status():
     """Show ZKP status for the current repository.
     
-    Displays information about created proofs and verification status.
+    Displays information about created proofs and verification status
+    for the latest local commit.
     """
     try:
-        zkp_dir = _get_zkp_dir()
-        proof_file = zkp_dir / "proof.json"
-        verified_file = zkp_dir / ".verified"
+        local_commit_result = _get_latest_local_commit()
+        if not local_commit_result:
+            console.print("[yellow]No local commits found. Run 'flair add' first.[/yellow]")
+            return
+            
+        commit_data, commit_dir = local_commit_result
         
         console.print(f"\n[cyan]ZKP Status for {Path.cwd().name}[/cyan]")
-        console.print(f"[dim]Location: {zkp_dir}[/dim]\n")
+        console.print(f"[dim]Location: {commit_dir}[/dim]\n")
         
-        if not proof_file.exists():
-            console.print("[yellow]No proofs created yet. Run 'flair zkp create'[/yellow]")
+        if "zkp" not in commit_data:
+            console.print("[yellow]No proofs created for this commit yet. Run 'flair zkp create'[/yellow]")
             return
-        
-        # Load and display proof info
-        with open(proof_file, 'r') as f:
-            proof_data = json.load(f)
+            
+        proof_data = commit_data["zkp"]
+        verified_file = commit_dir / ".verified"
         
         console.print("[cyan]Proof Information:[/cyan]")
         console.print(f"  Model: {proof_data.get('model_file')}")
