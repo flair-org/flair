@@ -1022,6 +1022,17 @@ This ensures that the `flair merge` command averages peer contributors who train
 4. Generates a new artifact inside `.flair/.merge_candidates/<candidate_uuid>/`.
 5. Prompts the user to explicitly run `flair add` and `flair commit` to stage and finalize the merged model, ensuring full local review before performing a `flair push`.
 
+### List mergeable commits
+Lists the available sibling commits after the last merger commit that are eligible for merging using the `flair merge create` command.
+
+```bash
+flair merge list --min-children 2
+```
+
+**Options:**
+- `--min-children`: Minimum sibling commits required to aggregate (default: 2).
+- `--since-commit`: Optional override cursor hash to begin searching for siblings.
+
 ## Revert Commits
 
 ### Revert to the previous commit
