@@ -1006,6 +1006,8 @@ flair merge create --min-children 2 --strategy fedavg
 - `--min-children`: Minimum sibling commits required to trigger an aggregation (default: 2).
 - `--strategy`: The federated strategy to use (currently supports `fedavg`).
 - `--since-commit`: Optional override cursor hash to begin searching for siblings.
+- `--include`: Optional list of commit hashes to specifically include in the merge. (e.g., `--include <hash1> --include <hash2>`)
+- `--exclude`: Optional list of commit hashes to exclude from the merge. (e.g., `--exclude <hash3>`)
 
 **Commit Selection Workflow (Star-Topology):**
 The merge command follows a strict star-topology logic rather than a deep sequential chain:
