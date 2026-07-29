@@ -309,3 +309,62 @@ def create_merge_candidate(
         # Cleanup temp directory
         if temp_dir and temp_dir.exists():
             shutil.rmtree(temp_dir)
+
+
+@app.command("list")
+def list_mergeable_commits(
+    min_children: int = typer.Option(2, "--min-children", help="Minimum sibling commits required to aggregate"),
+    since_commit: str = typer.Option(None, "--since-commit", help="Optional cursor override commit hash"),
+):
+    """List the available sibling commits after the last merger commit that are mergeable."""
+    try:
+        flair_dir = Path.cwd() / ".flair"
+        if not flair_dir.exists():
+            console.print("[red]Not in a Flair repository. Run 'flair init' first.[/red]")
+            raise typer.Exit(code=1)
+
+        all_local_commits = _get_all_local_commits()
+        if not all_local_commits:
+            console.print("[yellow]No local commits available.[/yellow]")
+            raise typer.Exit(code=0)
+
+        cursor = since_commit or _find_last_merge_cursor(all_local_commits)
+        candidate_window = _slice_after_cursor(all_local_commits, cursor)
+
+        eligible = [
+            (commit_data, commit_dir)
+            for commit_data, commit_dir in candidate_window
+            if _is_merge_eligible_commit(commit_data, commit_dir)
+        ]
+
+        if not eligible:
+            console.print("[yellow]No eligible finalized commits found after merge cursor.[/yellow]")
+            console.print(f"[dim]Cursor: {cursor[:16] if cursor != '_GENESIS_COMMIT_' else 'Genesis'}...[/dim]")
+            raise typer.Exit(code=0)
+
+        grouped = _group_by_parent(eligible)
+        target_group = None
+
+        for parent_hash, group in grouped.items():
+            if parent_hash == cursor and len(group) >= min_children:
+                compatible, reason = _group_compatibility_report(group)
+                if compatible:
+                    target_group = group
+                    break
+
+        if target_group is None:
+            console.print("[yellow]No mergeable sibling group found from the current merge cursor.[/yellow]")
+            console.print(f"[dim]Cursor: {cursor[:16] if cursor != '_GENESIS_COMMIT_' else 'Genesis'}...[/dim]")
+            raise typer.Exit(code=0)
+
+        console.print(f"[green]Found {len(target_group)} mergeable sibling commits after cursor {cursor[:16]}...[/green]")
+        for commit_data, _ in target_group:
+            commit_hash = commit_data.get("commitHash", "UNKNOWN")
+            message = commit_data.get("message", "No message")
+            console.print(f"  - {commit_hash[:16]}... : {message}")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]✗ Failed to list mergeable commits: {e}[/red]")
+        raise typer.Exit(code=1)

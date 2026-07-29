@@ -978,7 +978,7 @@ flair push
 ## Pull Commits
 
 ### Pull commit statuses from remote repository
-Synchronizes the local commit statuses (`PENDING`, `MERGER`, `MERGED`, `REJECTED`) with the repository manager backend for a specific branch. Its usage is similar to `git pull`.
+Synchronizes the local commit statuses (`PENDING`, `MERGER`, `MERGED`, `SUPERSEDED`) with the repository manager backend for a specific branch. Its usage is similar to `git pull`.
 
 **Features:**
 - **Branch Specific**: Operates on the current branch (using local `.flair/HEAD`) or a specified branch name.
