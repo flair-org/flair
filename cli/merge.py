@@ -167,6 +167,8 @@ def create_merge_candidate(
     min_children: int = typer.Option(2, "--min-children", help="Minimum sibling commits required to aggregate"),
     strategy: str = typer.Option("fedavg", "--strategy", help="Merge strategy (v1 supports fedavg)"),
     since_commit: str = typer.Option(None, "--since-commit", help="Optional cursor override commit hash"),
+    include: List[str] = typer.Option(None, "--include", help="List of commit hashes to include in the merge"),
+    exclude: List[str] = typer.Option(None, "--exclude", help="List of commit hashes to exclude from the merge"),
 ):
     """Create a local merge candidate from sibling commits since the last merge cursor."""
     temp_dir = None
@@ -204,13 +206,23 @@ def create_merge_candidate(
         target_group = None
 
         for parent_hash, group in grouped.items():
-            if parent_hash == cursor and len(group) >= min_children:
-                compatible, reason = _group_compatibility_report(group)
-                if compatible:
-                    target_parent = parent_hash
-                    target_group = group
-                    break
-                console.print(f"[yellow]Skipping sibling group @ {parent_hash[:16]}...: {reason}[/yellow]")
+            if parent_hash == cursor:
+                filtered_group = []
+                for item in group:
+                    c_hash = item[0].get("commitHash")
+                    if exclude and c_hash in exclude:
+                        continue
+                    if include and c_hash not in include:
+                        continue
+                    filtered_group.append(item)
+
+                if len(filtered_group) >= min_children:
+                    compatible, reason = _group_compatibility_report(filtered_group)
+                    if compatible:
+                        target_parent = parent_hash
+                        target_group = filtered_group
+                        break
+                    console.print(f"[yellow]Skipping sibling group @ {parent_hash[:16]}...: {reason}[/yellow]")
 
         if target_group is None:
             console.print("[yellow]No mergeable sibling group found from the current merge cursor.[/yellow]")
