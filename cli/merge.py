@@ -313,7 +313,8 @@ def create_merge_candidate(
             "metadata": {
                 "mergeStrategy": "fedavg",
                 "mergeParents": parent_hashes,
-                "mergeParent": target_parent
+                "mergeParent": target_parent,
+                "mergeof": parent_hashes
             }
         }
 
