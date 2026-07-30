@@ -403,29 +403,33 @@ def push(
             
             # Get ZKP files for this commit
             zkp_info = commit_data.get("zkp")
-            if not zkp_info:
-                console.print(f"[red]✗ Commit {idx}: ZKP info missing[/red]")
-                console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
-                raise typer.Exit(code=1)
+            is_checkpoint = commit_type == "CHECKPOINT"
             
-            proof_file = commit_dir / zkp_info.get("proof_file", "proof.zlib")
-            vk_file = commit_dir / zkp_info.get("verification_key_file", "verification_key.zlib")
-            settings_file = commit_dir / zkp_info.get("settings_file", "settings.zlib")
-            
-            if not all([proof_file.exists(), vk_file.exists(), settings_file.exists()]):
-                console.print(f"[red]✗ Commit {idx}: ZKP files missing[/red]")
-                console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
-                raise typer.Exit(code=1)
-            
-            zkp_files = {
-                "proof_file": proof_file,
-                "vk_file": vk_file,
-                "settings_file": settings_file,
-                "proof_cid": zkp_info.get("proof_cid"),
-                "vk_cid": zkp_info.get("verification_key_cid"),
-                "settings_cid": zkp_info.get("settings_cid"),
-                "base_commit_hash": zkp_info.get("base_commit_hash")
-            }
+            zkp_files = {}
+            if not is_checkpoint:
+                if not zkp_info:
+                    console.print(f"[red]✗ Commit {idx}: ZKP info missing[/red]")
+                    console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
+                    raise typer.Exit(code=1)
+                
+                proof_file = commit_dir / zkp_info.get("proof_file", "proof.zlib")
+                vk_file = commit_dir / zkp_info.get("verification_key_file", "verification_key.zlib")
+                settings_file = commit_dir / zkp_info.get("settings_file", "settings.zlib")
+                
+                if not all([proof_file.exists(), vk_file.exists(), settings_file.exists()]):
+                    console.print(f"[red]✗ Commit {idx}: ZKP files missing[/red]")
+                    console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
+                    raise typer.Exit(code=1)
+                
+                zkp_files = {
+                    "proof_file": proof_file,
+                    "vk_file": vk_file,
+                    "settings_file": settings_file,
+                    "proof_cid": zkp_info.get("proof_cid"),
+                    "vk_cid": zkp_info.get("verification_key_cid"),
+                    "settings_cid": zkp_info.get("settings_cid"),
+                    "base_commit_hash": zkp_info.get("base_commit_hash")
+                }
             
             # Step 1: Initiate commit session
             console.print("[cyan]Step 1/5: Initiating commit session...[/cyan]")
@@ -450,15 +454,21 @@ def push(
             # Step 2: Check ZKML proof uniqueness
             console.print("[cyan]Step 2/5: Checking ZKML proof uniqueness...[/cyan]")
             with _client_with_auth() as client:
-                response = client.post(
-                    f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-check",
-                    json={
-                        "sessionId": session_id,
-                        "initiateToken": initiate_token,
+                req_data = {
+                    "sessionId": session_id,
+                    "initiateToken": initiate_token,
+                    "isCheckpoint": is_checkpoint
+                }
+                if not is_checkpoint:
+                    req_data.update({
                         "proofCid": zkp_files["proof_cid"],
                         "settingsCid": zkp_files["settings_cid"],
                         "vkCid": zkp_files["vk_cid"]
-                    }
+                    })
+
+                response = client.post(
+                    f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-check",
+                    json=req_data
                 )
                 response.raise_for_status()
                 zkml_check_data = response.json()
@@ -474,22 +484,28 @@ def push(
             # Step 3: Upload ZKML proofs
             console.print("[cyan]Step 3/5: Uploading ZKML proofs...[/cyan]")
             with _client_with_auth() as client:
-                files = {
-                    "proof": ("proof.zlib", open(zkp_files["proof_file"], "rb"), "application/octet-stream"),
-                    "settings": ("settings.zlib", open(zkp_files["settings_file"], "rb"), "application/octet-stream"),
-                    "verification_key": ("verification_key.zlib", open(zkp_files["vk_file"], "rb"), "application/octet-stream")
-                }
                 data = {
                     "sessionId": session_id,
                     "initiateToken": initiate_token,
                     "zkmlToken": zkml_token
                 }
                 
-                response = client.post(
-                    f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-upload",
-                    files=files,
-                    data=data
-                )
+                if is_checkpoint:
+                    response = client.post(
+                        f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-upload",
+                        data=data
+                    )
+                else:
+                    files = {
+                        "proof": ("proof.zlib", open(zkp_files["proof_file"], "rb"), "application/octet-stream"),
+                        "settings": ("settings.zlib", open(zkp_files["settings_file"], "rb"), "application/octet-stream"),
+                        "verification_key": ("verification_key.zlib", open(zkp_files["vk_file"], "rb"), "application/octet-stream")
+                    }
+                    response = client.post(
+                        f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-upload",
+                        files=files,
+                        data=data
+                    )
                 response.raise_for_status()
                 zkml_upload_data = response.json()
             
