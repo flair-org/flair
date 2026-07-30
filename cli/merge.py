@@ -269,48 +269,64 @@ def create_merge_candidate(
         # Aggregate using flwr_serverless
         aggregated = _aggregate_with_flwr_node(models, weights, temp_dir)
 
-        candidate_hash = str(uuid4())
-        candidate_dir = flair_dir / ".merge_candidates" / candidate_hash
-        candidate_dir.mkdir(parents=True, exist_ok=True)
+        # Generate new commit hash (UUIDv4)
+        commit_hash = str(uuid4())
+        
+        # Create directly in .local_commits
+        local_commits_dir = flair_dir / ".local_commits"
+        local_commits_dir.mkdir(exist_ok=True)
+        commit_dir = local_commits_dir / commit_hash
+        commit_dir.mkdir(parents=True, exist_ok=True)
 
         params_filename = "params.pt" if framework == "pytorch" else "params.npz"
-        params_path = candidate_dir / params_filename
+        params_path = commit_dir / params_filename
         saved_params_name = _save_aggregated_params(framework, aggregated, params_path)
 
         class_space = target_group[0][0].get("classSpace")
         class_space_hash = target_group[0][0].get("classSpaceHash")
         architecture_hash = target_group[0][0].get("architectureHash")
 
-        candidate = {
-            "mergeCandidateHash": candidate_hash,
+        commit_data = {
+            "commitHash": commit_hash,
+            "architecture": framework,
             "commitType": "CHECKPOINT",
             "status": "MERGER",
-            "mergeStrategy": "fedavg",
-            "mergeParent": target_parent,
-            "mergeParents": parent_hashes,
+            "message": f"MERGE of {len(parent_hashes)} commits",
             "architectureHash": architecture_hash,
+            "previousArchitectureHash": architecture_hash,
+            "architectureChanged": False,
             "classSpace": class_space,
             "classSpaceHash": class_space_hash,
+            "previousClassSpaceHash": class_space_hash,
+            "classSpaceChanged": False,
             "params": {
                 "file": saved_params_name,
                 "framework": framework,
                 "source": "local-fedavg",
             },
+            "deltaParams": None,
+            "zkp": None,
             "metrics": {
                 "num_examples": int(sum(weights))
+            },
+            "mergedCommits": parent_hashes,
+            "metadata": {
+                "mergeStrategy": "fedavg",
+                "mergeParents": parent_hashes,
+                "mergeParent": target_parent
             }
         }
 
-        with open(candidate_dir / "merge_candidate.json", "w", encoding="utf-8") as f:
-            json.dump(candidate, f, indent=2)
+        with open(commit_dir / "commit.json", "w", encoding="utf-8") as f:
+            json.dump(commit_data, f, indent=2)
 
-        console.print("[green]✓ Local merge candidate created[/green]")
-        console.print(f"  Candidate: {candidate_hash[:16]}...")
+        console.print("[green]✓ Local merger commit created[/green]")
+        console.print(f"  Commit: {commit_hash[:16]}...")
         console.print(f"  Parent cursor: {target_parent[:16]}...")
         console.print(f"  Aggregated commits: {len(parent_hashes)}")
         console.print(f"  Params file: {saved_params_name}")
-        console.print("[dim]Stored under .flair/.merge_candidates/[/dim]")
-        console.print("[dim]Run 'flair add' and 'flair commit' to formalize this candidate.[/dim]")
+        console.print(f"[dim]Stored under .flair/.local_commits/{commit_hash}[/dim]")
+        console.print("[dim]Run 'flair push' to upload this merger commit.[/dim]")
 
     except typer.Exit:
         raise

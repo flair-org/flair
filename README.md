@@ -995,8 +995,8 @@ flair pull feature-branch -u origin # Specify upstream (optional)
 
 Flair allows you to aggregate sibling commits (commits sharing the same parent and architecture) into a single merged model using Federated Averaging (FedAvg).
 
-### Create a merge candidate
-Generates a local merge candidate by fetching models from sibling commits, aggregating them using `flwr_serverless` nodes in a temporary `LocalFolder`, and producing a merged artifact.
+### Create a merge commit
+Generates a local merger commit by fetching models from sibling commits, aggregating them using `flwr_serverless` nodes in a temporary `LocalFolder`, and producing a finalized merged commit.
 
 ```bash
 flair merge create --min-children 2 --strategy fedavg
@@ -1021,8 +1021,8 @@ This ensures that the `flair merge` command averages peer contributors who train
 1. Scans `.flair/commits/` for finalized sibling commits.
 2. If enough mergeable commits are found, it initializes an `AsyncFederatedNode` connected to a `.flair/.temp_merge` temporary shared folder.
 3. Performs a mathematical `FedAvg` using the `Aggregatable` properties (weights scaled by number of training examples) of the commits.
-4. Generates a new artifact inside `.flair/.merge_candidates/<candidate_uuid>/`.
-5. Prompts the user to explicitly run `flair add` and `flair commit` to stage and finalize the merged model, ensuring full local review before performing a `flair push`.
+4. Generates a new finalized merger commit inside `.flair/.local_commits/<commit_uuid>/`.
+5. Prompts the user to explicitly run `flair push` to upload the merged model (no ZKP generation is required for merger commits).
 
 ### List mergeable commits
 Lists the available sibling commits after the last merger commit that are eligible for merging using the `flair merge create` command.
