@@ -1303,16 +1303,19 @@ When you switch to a different branch using `flair checkout`, the CLI intelligen
 	repo.json                # Remote repo snapshot used by clone/checkout
 	branches.json            # Cached branch list for the repo
 ```
-# Repo settings file in project root
-config.yaml               # Repo settings (commitRetentionLimit)
+### Repo Settings
 
-# HEAD file contains the following:
-## "currentBranch": branch_data.get("name"),
-## "branchHash": branch_data.get("branchHash"),
-## "description": branch_data.get("description"),
-## "latestCommitHash": latest_commit.get("commitHash")  # Added by clone/push
+`config.yaml` is the settings file in the project root which contains repository settings like `commitRetentionLimit`.
 
-# HEAD file structure example:
+### `HEAD` File Structure
+
+The `HEAD` file contains the following metadata about the repository state:
+- `currentBranch`: The name of the current branch (e.g., `branch_data.get("name")`).
+- `branchHash`: The hash of the current branch (e.g., `branch_data.get("branchHash")`).
+- `description`: The branch description (e.g., `branch_data.get("description")`).
+- `latestCommitHash`: The hash of the latest commit (e.g., `latest_commit.get("commitHash")`, added by clone/push).
+
+**Example `HEAD` file:**
 ```json
 {
    "currentBranch": "main",
@@ -1323,12 +1326,13 @@ config.yaml               # Repo settings (commitRetentionLimit)
 }
 ```
 
-# commit.json includes architecture-aware fields:
-## "commitType": "CHECKPOINT" | "DELTA",
-## "architectureHash": "...",
-## "previousArchitectureHash": "..." | null,
-## "architectureChanged": true | false
-```
+### `commit.json` Structure
+
+The `commit.json` metadata file includes architecture-aware fields:
+- `commitType`: `"CHECKPOINT"` or `"DELTA"`
+- `architectureHash`: `...`
+- `previousArchitectureHash`: `...` or `null`
+- `architectureChanged`: `true` or `false`
 
 ## Complete Workflow Example
 
