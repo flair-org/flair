@@ -2,9 +2,33 @@
 
 Flair CLI is a local-first command-line tool for versioning trained machine learning models. It brings Git-style workflows—commits, branches, merges, rollback, and deterministic history—to model parameters and training artifacts, while preserving reproducibility and optional privacy-preserving collaboration.
 
+## Installation and executable command
+
+The CLI is packaged as `flair-cli` and exposes the `flair` executable. From the directory containing `pyproject.toml`, create a virtual environment and install the project in editable mode:
+
+```powershell
+cd "e:\RIO project\Flair\official\flair-org\flair"
+
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+
+flair --help
+```
+
+The source package is located under `flair_cli/`, with the entry point defined in `pyproject.toml` as `flair_cli.main:app`. After installation, use commands such as:
+
+```powershell
+flair status
+flair init
+flair log
+```
+
 
 ## Table of Contents
 
+- [Installation and executable command](#installation-and-executable-command)
 - [Authentication](#authentication)
    - [SSH Integration](#ssh-integration)
 - [Status Command](#status-command)
