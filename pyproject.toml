@@ -4,8 +4,12 @@ version = "0.1.0"
 description = "Flair CLI — record-only model repository and commit ledger for ML model evolution"
 authors = [ { name = "Flair Contributors" } ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
+dependencies = [
+	"flwr>=1.6,<1.7",
+	"flwr-serverless>=0.2.10,<0.3",
+]
 
 [project.scripts]
 flair = "flair_cli.main:app"
@@ -17,7 +21,9 @@ description = "Flair CLI — record-only model repository and commit ledger for 
 authors = [ "Flair Contributors" ]
 
 [tool.poetry.dependencies]
-python = ">=3.12,<4.0"
+python = ">=3.11,<3.12"
+flwr = ">=1.6,<1.7"
+flwr-serverless = ">=0.2.10,<0.3"
 typer = "*"
 rich = "*"
 httpx = "^0.24"

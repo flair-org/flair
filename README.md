@@ -9,7 +9,7 @@ The CLI is packaged as `flair-cli` and exposes the `flair` executable. From the 
 ```powershell
 cd "e:\RIO project\Flair\official\flair-org\flair"
 
-py -3.12 -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e .
