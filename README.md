@@ -24,19 +24,6 @@ python -m pip install "git+https://github.com/flair-org/flair.git@v0.1.0"
 
 This installs the declared dependencies and registers the `flair` executable from `flair_cli.main:app`.
 
-### Publish on PyPI
-
-GitHub installation uses the repository URL. To support a command such as `pip install flair-cli`, build and publish the package to PyPI:
-
-```powershell
-python -m pip install --upgrade build twine
-python -m build
-python -m twine upload dist\*
-```
-
-The package name is `flair-cli`; the `flair` name is the installed executable. The PyPI project name must be unique and requires a PyPI account and token.
-
-
 ## Table of Contents
 
 - [Installation](#installation)
