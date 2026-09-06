@@ -8,6 +8,19 @@ requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
 dependencies = [
 	"flwr>=1.13,<2",
+	"typer",
+	"rich",
+	"httpx>=0.24,<0.25",
+	"pydantic",
+	"pyyaml>=6.0,<7",
+	"numpy>=1.26,<2",
+	"onnx>=1.16,<2",
+	"tf2onnx>=1.15,<2",
+	"tensorflow>=2.15,<3",
+	"torch>=2.2,<3",
+	"ezkl>=0.4.0",
+	"cryptography>=43,<44",
+	"paramiko>=3.5,<4",
 ]
 
 [project.scripts]

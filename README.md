@@ -25,6 +25,36 @@ flair init
 flair log
 ```
 
+### Install directly from GitHub
+
+After the repository is pushed to GitHub, install the CLI into any Python 3.11 environment with:
+
+```powershell
+python -m pip install "git+https://github.com/flair-org/flair.git"
+flair --help
+```
+
+To install a specific branch or release tag:
+
+```powershell
+python -m pip install "git+https://github.com/flair-org/flair.git@main"
+python -m pip install "git+https://github.com/flair-org/flair.git@v0.1.0"
+```
+
+This installs the declared dependencies and registers the `flair` executable from `flair_cli.main:app`. Users need Git installed and must use Python 3.11 because the current TensorFlow dependency stack is constrained to that version.
+
+### Publish on PyPI
+
+GitHub installation uses the repository URL. To support a command such as `pip install flair-cli`, build and publish the package to PyPI:
+
+```powershell
+python -m pip install --upgrade build twine
+python -m build
+python -m twine upload dist\*
+```
+
+The package name is `flair-cli`; the `flair` name is the installed executable. The PyPI project name must be unique and requires a PyPI account and token.
+
 
 ## Table of Contents
 
