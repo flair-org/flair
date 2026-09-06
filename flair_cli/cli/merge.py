@@ -20,9 +20,9 @@ from rich.console import Console
 
 from flwr.common import ndarrays_to_parameters, parameters_to_ndarrays
 from flwr.server.strategy import FedAvg
-from flwr_serverless import AsyncFederatedNode, LocalFolder
-from flwr_serverless.federated_node.aggregatable import Aggregatable
-
+from .utils.async_federated_node import AsyncFederatedNode
+from .utils.local_folder import LocalFolder
+from .utils.aggregatable import Aggregatable
 from .utils.local_commits import _get_all_local_commits, _is_commit_complete
 from .utils.reconstruction import _reconstruct_params_from_checkpoint
 
@@ -108,7 +108,7 @@ def _to_numpy(value: Any) -> np.ndarray:
 
 def _aggregate_with_flwr_node(models: list[dict[str, np.ndarray]], weights: list[float], temp_dir: Path) -> dict[str, np.ndarray]:
     """
-    Uses flwr_serverless AsyncFederatedNode with LocalFolder to perform FedAvg.
+    Uses Flair's standalone local federated node and LocalFolder to perform FedAvg.
     """
     if not models:
         raise ValueError("No models supplied for aggregation")
@@ -266,7 +266,7 @@ def create_merge_candidate(
             shutil.rmtree(temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        # Aggregate using flwr_serverless
+        # Aggregate using Flair's standalone Flower node
         aggregated = _aggregate_with_flwr_node(models, weights, temp_dir)
 
         # Generate new commit hash (UUIDv4)

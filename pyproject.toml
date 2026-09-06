@@ -7,8 +7,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
 dependencies = [
-	"flwr>=1.6,<1.7",
-	"flwr-serverless>=0.2.10,<0.3",
+	"flwr>=1.13,<2",
 ]
 
 [project.scripts]
@@ -22,8 +21,7 @@ authors = [ "Flair Contributors" ]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
-flwr = ">=1.6,<1.7"
-flwr-serverless = ">=0.2.10,<0.3"
+flwr = ">=1.13,<2"
 typer = "*"
 rich = "*"
 httpx = "^0.24"
