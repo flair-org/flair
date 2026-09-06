@@ -22,7 +22,7 @@ python -m pip install "git+https://github.com/flair-org/flair.git@main"
 python -m pip install "git+https://github.com/flair-org/flair.git@v0.1.0"
 ```
 
-This installs the declared dependencies and registers the `flair` executable from `flair_cli.main:app`. Users need Git installed and must use Python 3.11 because the current TensorFlow dependency stack is constrained to that version.
+This installs the declared dependencies and registers the `flair` executable from `flair_cli.main:app`.
 
 ### Publish on PyPI
 
