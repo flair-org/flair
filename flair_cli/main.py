@@ -8,7 +8,7 @@ from rich.console import Console
 
 from flair_cli.cli import auth, config, init, clone, basemodel, branch, add, zkp, push, pull, params, new, commit, revert, reset, metrics, merge, status as status_cmd, log as log_cmd, diff as diff_cmd
 
-app = typer.Typer(help="Flair — model repository ledger CLI")
+app = typer.Typer(help="Flair - versioning Machine Learning models")
 console = Console()
 
 # Mount subcommands
