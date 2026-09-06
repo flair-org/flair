@@ -25,7 +25,7 @@ flair init
 flair log
 ```
 
-### Install directly from GitHub
+### Install with pip from GitHub
 
 After the repository is pushed to GitHub, install the CLI into any Python 3.11 environment with:
 
