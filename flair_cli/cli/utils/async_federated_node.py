@@ -1,4 +1,4 @@
-"""Standalone local equivalent of the flwr-serverless aggregation node."""
+"""Standalone local Flower aggregation node used by the merge command."""
 
 from typing import List, Tuple
 from uuid import uuid4
@@ -11,7 +11,7 @@ from .aggregatable import Aggregatable
 
 
 class AsyncFederatedNode:
-    """Provide the local Flower strategy aggregation used by merge candidates."""
+    """Run Flower strategy aggregation without the flwr-serverless package."""
 
     def __init__(
         self,
@@ -28,6 +28,9 @@ class AsyncFederatedNode:
         self.seen_models = set()
 
     def _aggregate(self, aggregatables: List[Aggregatable]) -> Aggregatable:
+        if not aggregatables:
+            raise ValueError("No aggregatables supplied")
+
         results: List[Tuple[ClientProxy, FitRes]] = [
             (
                 None,
@@ -47,6 +50,7 @@ class AsyncFederatedNode:
             failures=[],
         )
         self.counter += 1
+
         if aggregated_parameters is None:
             raise ValueError("Flower strategy did not produce aggregated parameters")
 
