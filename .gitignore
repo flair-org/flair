@@ -1,2 +1,8 @@
 poetry.lock
 .venv
+__pycache__/
+*.pyc
+*.egg-info/
+.flair/
+dist/
+build/

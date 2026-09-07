@@ -224,58 +224,6 @@ def _update_branches_cache(branches: list[dict]):
     branches_file = flair_dir / "branches.json"
     with open(branches_file, "w") as f:
         json.dump(branches, f, indent=2)
-    """Get current repository info from .flair/repo.json"""
-    flair_dir = Path.cwd() / ".flair"
-    repo_file = flair_dir / "repo.json"
-    if not repo_file.exists():
-        return None
-    try:
-        with open(repo_file, "r") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def _get_current_branch() -> dict | None:
-    """Get current branch from .flair/HEAD"""
-    flair_dir = Path.cwd() / ".flair"
-    head_file = flair_dir / "HEAD"
-    if not head_file.exists():
-        return None
-    try:
-        with open(head_file, "r") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def _set_current_branch(branch_data: dict):
-    """Update .flair/HEAD with current branch info"""
-    flair_dir = Path.cwd() / ".flair"
-    head_file = flair_dir / "HEAD"
-    with open(head_file, "w") as f:
-        json.dump(branch_data, f, indent=2)
-
-
-def _get_all_branches() -> list[dict]:
-    """Get all branches from .flair/branches.json"""
-    flair_dir = Path.cwd() / ".flair"
-    branches_file = flair_dir / "branches.json"
-    if not branches_file.exists():
-        return []
-    try:
-        with open(branches_file, "r") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def _update_branches_cache(branches: list[dict]):
-    """Update .flair/branches.json cache"""
-    flair_dir = Path.cwd() / ".flair"
-    branches_file = flair_dir / "branches.json"
-    with open(branches_file, "w") as f:
-        json.dump(branches, f, indent=2)
 
 
 @app.command(name="branch")

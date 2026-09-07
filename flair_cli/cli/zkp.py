@@ -25,6 +25,14 @@ import os
 import asyncio
 import numpy as np
 
+# Ensure HOME and EZKL_REPO_PATH are set for EZKL rust bindings, especially on Windows
+if "HOME" not in os.environ:
+    os.environ["HOME"] = str(Path.home())
+if "USERPROFILE" not in os.environ:
+    os.environ["USERPROFILE"] = str(Path.home())
+if "EZKL_REPO_PATH" not in os.environ:
+    os.environ["EZKL_REPO_PATH"] = str(Path.home() / ".ezkl")
+
 from ..core import config as config_mod
 from .utils.local_commits import _get_flair_dir, _get_latest_local_commit, _get_commit_by_hash, _get_head_info
 from .branch import _download_file, _ensure_ext
@@ -159,6 +167,11 @@ def _convert_to_onnx(model_path: Path, framework: str) -> Path:
     if model_path.suffix == ".onnx":
         return model_path
     
+    onnx_path = model_path.parent / f"{model_path.stem}.onnx"
+    if onnx_path.exists():
+        console.print(f"[green]✓ Found existing ONNX model: {onnx_path.name}[/green]")
+        return onnx_path
+
     console.print(f"\n[yellow]Converting {framework} model to ONNX format...[/yellow]")
     
     try:
@@ -169,6 +182,9 @@ def _convert_to_onnx(model_path: Path, framework: str) -> Path:
         else:
             raise ValueError(f"Unsupported framework: {framework}")
     except Exception as e:
+        if onnx_path.exists():
+            console.print(f"[green]✓ Using existing ONNX model: {onnx_path.name}[/green]")
+            return onnx_path
         raise typer.BadParameter(
             f"Failed to convert model to ONNX: {str(e)}\n"
             "Make sure you have the required packages installed:\n"
@@ -176,7 +192,6 @@ def _convert_to_onnx(model_path: Path, framework: str) -> Path:
             "  TensorFlow: pip install tensorflow tf2onnx"
         )
     
-    onnx_path = model_path.parent / f"{model_path.stem}.onnx"
     return onnx_path
 
 
@@ -189,21 +204,47 @@ def _pytorch_to_onnx(model_path: Path) -> None:
         raise ImportError("PyTorch or ONNX not installed. Install with: pip install torch onnx")
     
     try:
-        model = torch.load(model_path, map_location='cpu')
-        dummy_input = torch.randn(1, 3, 224, 224)  # Adjust based on your model
-        
         onnx_path = model_path.parent / f"{model_path.stem}.onnx"
-        torch.onnx.export(
-            model,
-            dummy_input,
-            str(onnx_path),
-            export_params=True,
-            opset_version=12,
-            do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            verbose=False
-        )
+        try:
+            model = torch.load(model_path, map_location='cpu', weights_only=False)
+        except TypeError:
+            model = torch.load(model_path, map_location='cpu')
+
+        import collections
+        if isinstance(model, (dict, collections.OrderedDict)):
+            if onnx_path.exists():
+                console.print(f"[green]✓ Loaded weights dict; using existing {onnx_path.name}[/green]")
+                return
+            raise RuntimeError(
+                f"Loaded PyTorch file '{model_path.name}' is a state_dict (weights dictionary), not an executable model. "
+                f"Please export an ONNX model (e.g. {model_path.stem}.onnx) or save the complete model with torch.save(model, ...)."
+            )
+
+        # Infer correct dummy input shape
+        dummy_input = None
+        for shape in [(1, 3, 32, 32), (1, 3, 224, 224), (1, 1, 28, 28), (1, 10)]:
+            try:
+                test_inp = torch.randn(*shape)
+                _ = model(test_inp)
+                dummy_input = test_inp
+                break
+            except Exception:
+                continue
+        if dummy_input is None:
+            dummy_input = torch.randn(1, 3, 32, 32)
+        
+        export_kwargs = {
+            "export_params": True,
+            "opset_version": 12,
+            "do_constant_folding": True,
+            "input_names": ['input'],
+            "output_names": ['output'],
+            "verbose": False
+        }
+        try:
+            torch.onnx.export(model, dummy_input, str(onnx_path), dynamo=False, **export_kwargs)
+        except TypeError:
+            torch.onnx.export(model, dummy_input, str(onnx_path), **export_kwargs)
         console.print(f"[green]✓ Successfully converted to {onnx_path}[/green]")
     except Exception as e:
         raise RuntimeError(f"PyTorch to ONNX conversion failed: {str(e)}")
@@ -291,6 +332,10 @@ async def _process_model_with_ezkl(model_path: Path, input_dims: list, backend: 
             "Note: EZKL requires Python 3.9-3.11"
         )
     
+    import os
+    if "HOME" not in os.environ and "USERPROFILE" in os.environ:
+        os.environ["HOME"] = os.environ["USERPROFILE"]
+
     # Paths for EZKL artifacts
     data_path = zkp_dir / "input.json"
     cal_path = zkp_dir / "calibration.json"
@@ -312,25 +357,30 @@ async def _process_model_with_ezkl(model_path: Path, input_dims: list, backend: 
         
         console.print("[cyan]Step 2/10: Generating calibration data...[/cyan]")
         # 2) Calibration
-        calib_batch = 20
+        calib_batch = 5
         cal_dims = [calib_batch] + input_dims[1:]
         np_calib = _make_random_array(cal_dims)
-        flat_cal = np_calib.reshape(-1).tolist()
         with open(cal_path, 'w') as f:
-            json.dump({"input_data": [flat_cal]}, f)
+            json.dump({"input_data": [arr.reshape(-1).tolist() for arr in np_calib]}, f)
         
         console.print("[cyan]Step 3/10: Generating settings...[/cyan]")
         # 3) gen settings
         py_args = ezkl.PyRunArgs()
         py_args.input_visibility = "public"
         py_args.output_visibility = "public"
-        py_args.param_visibility = "private"
+        py_args.param_visibility = "fixed"
         if not ezkl.gen_settings(str(model_path), str(settings_path), py_run_args=py_args):
             raise RuntimeError("gen_settings failed")
-        
+
+        async def _maybe_await(val):
+            import inspect
+            if inspect.isawaitable(val):
+                return await val
+            return val
+
         console.print("[cyan]Step 4/10: Calibrating settings...[/cyan]")
         # 4) calibrate
-        await ezkl.calibrate_settings(str(cal_path), str(model_path), str(settings_path), "resources")
+        await _maybe_await(ezkl.calibrate_settings(str(cal_path), str(model_path), str(settings_path), "resources"))
         
         console.print("[cyan]Step 5/10: Compiling circuit...[/cyan]")
         # 5) compile
@@ -339,11 +389,12 @@ async def _process_model_with_ezkl(model_path: Path, input_dims: list, backend: 
         
         console.print("[cyan]Step 6/10: Getting SRS (Structured Reference String)...[/cyan]")
         # 6) get SRS
-        await ezkl.get_srs(str(settings_path))
+        await _maybe_await(ezkl.get_srs(str(settings_path)))
         
         console.print("[cyan]Step 7/10: Generating witness...[/cyan]")
         # 7) witness
-        if not await ezkl.gen_witness(str(data_path), str(compiled_path), str(witness_path)):
+        witness_res = await _maybe_await(ezkl.gen_witness(str(data_path), str(compiled_path), str(witness_path)))
+        if not witness_res:
             raise RuntimeError("gen_witness failed")
         
         console.print("[cyan]Step 8/10: Setting up proving and verification keys...[/cyan]")
@@ -353,7 +404,7 @@ async def _process_model_with_ezkl(model_path: Path, input_dims: list, backend: 
         
         console.print("[cyan]Step 9/10: Generating proof...[/cyan]")
         # 9) prove
-        if not ezkl.prove(str(witness_path), str(compiled_path), str(pk_path), str(proof_path), "single"):
+        if not ezkl.prove(str(witness_path), str(compiled_path), str(pk_path), str(proof_path)):
             raise RuntimeError("prove failed")
         
         console.print("[cyan]Step 10/10: Verifying proof...[/cyan]")
@@ -469,7 +520,8 @@ async def _verify_proof_with_ezkl(proof_files: dict, zkp_dir: Path) -> bool:
 def create_zkp(
     model_path: Optional[str] = typer.Option(None, "--model", "-m", help="Path to model file"),
     input_dims: str = typer.Option("[1, 3, 224, 224]", "--input-dims", help="Input dimensions as JSON array"),
-    backend: Optional[str] = typer.Option(None, "--backend", help="Backend to use (pytorch/tensorflow/numpy)")
+    backend: Optional[str] = typer.Option(None, "--backend", help="Backend to use (pytorch/tensorflow/numpy)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ZKP in staged commit"),
 ):
     """Create a Zero-Knowledge Proof for a model.
     
@@ -486,9 +538,9 @@ def create_zkp(
         local_commit_result = _get_latest_local_commit()
         if local_commit_result:
             commit_data, _ = local_commit_result
-            if commit_data.get("zkp") is not None:
+            if commit_data.get("zkp") is not None and not force:
                 console.print("[red]✗ This commit already has a zero-knowledge proof.[/red]")
-                console.print("[yellow]To create a new commit with a different ZKP, run 'flair add' first.[/yellow]")
+                console.print("[yellow]Use --force to overwrite, or 'flair add --force' to start fresh.[/yellow]")
                 raise typer.Exit(code=1)
         
         # Load repo config
@@ -528,11 +580,34 @@ def create_zkp(
         # Convert to ONNX if needed
         onnx_file = _convert_to_onnx(model_file, framework)
         
-        # Parse input dimensions
-        try:
-            dims = json.loads(input_dims)
-        except json.JSONDecodeError:
-            raise typer.BadParameter(f"Invalid JSON for input-dims: {input_dims}")
+        # Parse input dimensions or auto-detect from ONNX
+        dims = None
+        if input_dims and input_dims != "[1, 3, 224, 224]":
+            try:
+                dims = json.loads(input_dims)
+            except json.JSONDecodeError:
+                raise typer.BadParameter(f"Invalid JSON for input-dims: {input_dims}")
+
+        if dims is None:
+            try:
+                import onnx
+                onnx_model = onnx.load(str(onnx_file))
+                if onnx_model.graph.input:
+                    detected_dims = []
+                    for d in onnx_model.graph.input[0].type.tensor_type.shape.dim:
+                        val = d.dim_value if d.dim_value > 0 else 1
+                        detected_dims.append(val)
+                    if detected_dims:
+                        dims = detected_dims
+                        console.print(f"[dim]Auto-detected input dimensions: {dims}[/dim]")
+            except Exception:
+                pass
+
+        if dims is None:
+            try:
+                dims = json.loads(input_dims)
+            except json.JSONDecodeError:
+                raise typer.BadParameter(f"Invalid JSON for input-dims: {input_dims}")
         
         # Prepare ZKP directory (local commit directory, not .zkp)
         local_commit_result = _get_latest_local_commit()

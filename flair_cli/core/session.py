@@ -34,8 +34,10 @@ def load_session() -> Optional[Session]:
             
             # Check if session has expired
             if session.expires_at:
-                expires = datetime.fromisoformat(session.expires_at)
-                if datetime.utcnow() > expires:
+                expires_raw = session.expires_at.replace("Z", "+00:00")
+                expires = datetime.fromisoformat(expires_raw)
+                now = datetime.now(expires.tzinfo) if expires.tzinfo else datetime.utcnow()
+                if now > expires:
                     # Session expired, clear it
                     clear_session()
                     return None

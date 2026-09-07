@@ -70,7 +70,7 @@ def _get_auth_url(auth_url_override: str | None = None) -> str:
     # )
     
     # Should not reach here since FlairConfig has a default, but just in case
-    return "http://localhost:5173/"
+    return "http://localhost:3000/"
 
 
 def _resolve_ssh_key_path(key_path_override: str | None = None) -> Path:
@@ -235,7 +235,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
 @app.command("login")
 def login(
     auth_url: str = typer.Option(None, "--auth-url", help="Auth frontend URL (e.g., https://auth.flair.example/login)"),
-    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
+    open_browser: bool = typer.Option(True, "--browser", help="Automatically open browser"),
     force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists")
 ):
     """Login using Sign-In With Solana via browser OAuth2 callback flow.

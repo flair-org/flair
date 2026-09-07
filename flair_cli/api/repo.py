@@ -1,24 +1,27 @@
-﻿from typing import Dict, Any
+from typing import Dict, Any
 from .utils import _client_with_auth  # Import the shared helper
 
 def create_repo(payload: Dict[str, Any]) -> Dict[str, Any]:
     with _client_with_auth() as client:
-        r = client.post("/repos", json=payload)
+        r = client.post("/repo/create", json=payload)
         r.raise_for_status()
-        return r.json()
+        res_data = r.json()
+        return res_data.get("data", res_data)
 
 def list_repos() -> Dict[str, Any]:
     with _client_with_auth() as client:
-        r = client.get("/repos")
+        r = client.get("/repo")
         r.raise_for_status()
-        return r.json()
+        res_data = r.json()
+        return res_data.get("data", res_data)
 
 
 def get_repo(repo_id: str) -> Dict[str, Any]:
     with _client_with_auth() as client:
-        r = client.get(f"/repos/{repo_id}")
+        r = client.get(f"/repo/hash/{repo_id}")
         r.raise_for_status()
-        return r.json()
+        res_data = r.json()
+        return res_data.get("data", res_data)
 
 
 def get_repo_by_hash(repo_hash: str) -> Dict[str, Any]:

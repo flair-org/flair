@@ -42,18 +42,21 @@ def _verify_local_commit_chain(commits_to_push: list[tuple]) -> tuple[bool, str]
         return True, ""
     
     for idx, (commit_data, commit_dir) in enumerate(commits_to_push):
-        commit_hash = commit_data.get("commitHash")
+        commit_hash = commit_data.get("commitHash") or ""
         previous_hash = commit_data.get("previousCommitHash")
         
         if idx == 0:
             # First commit should reference genesis or nothing
             if previous_hash and previous_hash != GENESIS_COMMIT_HASH:
-                return False, f"First commit {commit_hash[:16]}... should reference Genesis but references {previous_hash[:16]}..."
+                prev_display = str(previous_hash)[:16]
+                return False, f"First commit {commit_hash[:16]}... should reference Genesis but references {prev_display}..."
         else:
             # Subsequent commits should reference the previous commit
-            expected_parent = commits_to_push[idx - 1][0].get("commitHash")
+            expected_parent = commits_to_push[idx - 1][0].get("commitHash") or ""
             if previous_hash != expected_parent:
-                return False, f"Commit {commit_hash[:16]}... previousCommitHash ({previous_hash[:16]}...) does not match parent ({expected_parent[:16]}...)"
+                prev_display = str(previous_hash)[:16] if previous_hash else "None"
+                expected_display = str(expected_parent)[:16] if expected_parent else "None"
+                return False, f"Commit {commit_hash[:16]}... previousCommitHash ({prev_display}...) does not match parent ({expected_display}...)"
     
     return True, ""
 
@@ -213,7 +216,12 @@ def push(
         
         # Load repo config
         repo_config = _load_repo_config()
-        repo_hash = repo_config.get("repoHash") or repo_config.get("metadata", {}).get("repoHash")
+        repo_hash = (
+            repo_config.get("repoHash")
+            or repo_config.get("hash")
+            or repo_config.get("id")
+            or repo_config.get("metadata", {}).get("repoHash")
+        )
         
         if not repo_hash:
             console.print("[red]Repository hash not found in config.[/red]")
@@ -591,10 +599,11 @@ def push(
                         "paramsReceiptToken": params_receipt_token,
                         "signedAt": signed_at,
                         "message": message,
+                        "paramHash": param_hash,
                         "architecture": framework,
                         "metrics": commit_metrics,
                         "commitSignature": commit_signature,
-                        "sshKeyFingerprint": ssh_identity.fingerprint,
+                        "sshKeyFingerprint": ssh_identity.fingerprint.replace("ssh:", "").strip(),
                         "commitType": commit_type,
                     }
                 )
@@ -620,6 +629,10 @@ def push(
             try:
                 with open(commit_file, 'w') as f:
                     json.dump(commit_data, f, indent=2)
+                target_dir = commit_dir.parent / returned_commit_hash
+                if target_dir != commit_dir and not target_dir.exists():
+                    commit_dir.rename(target_dir)
+                    commit_dir = target_dir
                 console.print(f"  [dim]Local commit updated with server hash[/dim]\n")
             except Exception as e:
                 console.print(f"[yellow]Warning: Failed to update local commit.json: {e}[/yellow]")
@@ -666,6 +679,8 @@ def push(
                 if deleted_count > 0:
                     console.print(f"[dim]Garbage collected {deleted_count} old local commit(s)[/dim]")
         
+    except typer.Exit:
+        raise
     except httpx.HTTPStatusError as e:
         error_detail = e.response.json() if e.response.content else {}
         console.print(f"[red]HTTP Error: {e.response.status_code}[/red]")

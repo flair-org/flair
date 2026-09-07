@@ -28,7 +28,7 @@ ALLOWED_BASE_MODEL_EXTENSIONS = [
 
 class FlairConfig(BaseModel):
     api_base_url: Optional[str] = "http://localhost:2112"
-    auth_url: Optional[str] = "http://localhost:5173"
+    auth_url: Optional[str] = "http://localhost:3000"
     # Session timeout in hours (default 7 days)
     session_timeout_hours: Optional[int] = 168
 
