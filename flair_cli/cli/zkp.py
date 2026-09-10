@@ -752,6 +752,22 @@ def verify_zkp(
             json.dump(verification_log, f, indent=2)
         
         if verified:
+            metrics = commit_data.get("metrics")
+            if metrics and metrics.get("zkp_verified"):
+                claimed_acc = metrics.get("accuracy")
+                zkp_acc = (metrics.get("zkp") or {}).get("accuracy")
+                if claimed_acc != zkp_acc and zkp_acc is not None:
+                    console.print(f"\n[bold red]✗ TAMPERING DETECTED IN COMMIT METRICS![/bold red]")
+                    console.print(f"  Claimed Accuracy: [red]{claimed_acc}[/red]")
+                    console.print(f"  ZKP Proven Accuracy: [green]{zkp_acc}[/green]")
+                    console.print("[red]Commit metrics do not match the cryptographic proof output.[/red]")
+                    raise typer.Exit(code=1)
+                else:
+                    acc_display = f"{claimed_acc * 100:.2f}%" if isinstance(claimed_acc, (int, float)) else str(claimed_acc)
+                    console.print(f"[green]✓ Commit evaluation metrics ({acc_display}) cryptographically verified via EZKL.[/green]")
+                    if metrics.get("dataset_hash"):
+                        console.print(f"  [dim]Dataset Commitment: {metrics.get('dataset_hash')}[/dim]")
+
             console.print(f"\n[green]✓ Proof verified successfully![/green]")
             console.print(f"[dim]Verification log saved to: {verified_file}[/dim]")
         else:

@@ -27,6 +27,8 @@ def normalize_json_value(value: Any) -> Any:
         return {k: normalize_json_value(value[k]) for k in sorted(value.keys())}
     elif isinstance(value, list):
         return [normalize_json_value(item) for item in value]
+    elif isinstance(value, float) and value.is_integer():
+        return int(value)
     else:
         return value
 
