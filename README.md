@@ -66,15 +66,25 @@ This installs the declared dependencies and registers the `flair` executable fro
 
 ## Authentication
 
+Log in through the browser-based SIWS flow:
+
 ```bash
 flair auth login
-## Opening browser for SIWS authentication...
-## ✓ Authenticated as you@example.com
 flair auth status
-## Logged in: you@example.com
 flair auth logout
-## ✓ Logged out
 ```
+
+By default, `flair auth login` opens the configured authentication page and waits for the local callback. Use `--force` to replace an existing valid session, or `--no-browser` to print the login URL instead of opening it automatically:
+
+```bash
+flair auth login --force
+flair auth login --no-browser
+flair auth login --auth-url https://auth.example.com/login
+```
+
+The authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`.
+
+`flair auth status` displays the logged-in principal and session expiration. `flair auth logout` clears the locally cached session token.
 
 ### SSH Integration
 
@@ -93,6 +103,22 @@ What these commands do:
 - `flair auth ssh setup` generates or registers a Flair SSH key, uploads the public key to the backend, and records the SSH fingerprint for the account.
 - `flair auth ssh env` prints or writes a shell activation snippet that starts `ssh-agent` and loads the key with `ssh-add`.
 - `flair auth ssh status` shows whether the key is present, loaded in `ssh-agent`, and registered for the current account.
+
+Useful setup options include:
+
+```bash
+flair auth ssh setup --key-path ~/.ssh/id_ed25519_flair
+flair auth ssh setup --no-passphrase
+flair auth ssh setup --overwrite
+flair auth ssh env --shell powershell
+flair auth ssh env --shell bash --output ~/.flair/activate-ssh.sh
+```
+
+Run `flair auth ssh setup` after `flair auth login` so the public key can be registered with the backend. On Windows PowerShell, run the generated activation script in the same shell session:
+
+```powershell
+. .\.flair\activate-ssh.ps1
+```
 
 Recommended default key path:
 
