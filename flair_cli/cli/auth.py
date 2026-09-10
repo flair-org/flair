@@ -15,7 +15,7 @@ from rich.table import Table
 from rich import print as rprint
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import threading
 import webbrowser
 import time
@@ -37,11 +37,11 @@ console = Console()
 app.add_typer(ssh_app, name="ssh", help="SSH key setup and environment helpers")
 
 
-def _get_auth_url(auth_url_override: str | None = None) -> str:
+def _get_auth_url(auth_url_override: str | None = None, wallet: bool = False) -> str:
     """
     Resolve auth URL with precedence:
     1. Command-line override (--auth-url)
-    2. Environment variable (FLAIR_AUTH_URL)
+    2. Environment variable (FLAIR_AUTH_URL or FLAIR_WALLET_AUTH_URL)
     3. Config file (~/.flair/config.yaml)
     4. Built-in default (localhost:5173 for dev)
     
@@ -49,17 +49,21 @@ def _get_auth_url(auth_url_override: str | None = None) -> str:
     """
     # Tier 1: CLI override
     if auth_url_override:
-        return auth_url_override
+        return auth_url_override.rstrip("/")
     
     # Tier 2: Environment variable
-    env_url = os.environ.get("FLAIR_AUTH_URL")
+    env_name = "FLAIR_WALLET_AUTH_URL" if wallet else "FLAIR_AUTH_URL"
+    env_url = os.environ.get(env_name)
     if env_url:
-        return env_url
+        return env_url.rstrip("/")
     
     # Tier 3: Config file
     cfg = config_mod.load_config()
     if cfg.auth_url:
-        return cfg.auth_url
+        configured_url = cfg.auth_url.rstrip("/")
+        if wallet and not configured_url.endswith("/wallet"):
+            configured_url += "/wallet"
+        return configured_url
 
     # # No config found
     # raise RuntimeError(
@@ -70,7 +74,7 @@ def _get_auth_url(auth_url_override: str | None = None) -> str:
     # )
     
     # Should not reach here since FlairConfig has a default, but just in case
-    return "http://localhost:5173/"
+    return "http://localhost:5173/wallet" if wallet else "http://localhost:5173/"
 
 
 def _resolve_ssh_key_path(key_path_override: str | None = None) -> Path:
@@ -194,6 +198,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
     
     # Class variables to store the received token
     token = None
+    principal = None
     wallet = None
     error = None
     
@@ -202,8 +207,9 @@ class CallbackHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query_params = parse_qs(parsed.query)
         
-        # Extract token and wallet from query params
-        token_list = query_params.get('token', [])
+        # Google returns sessionToken/principal; wallet auth returns token/wallet.
+        token_list = query_params.get('sessionToken', []) or query_params.get('token', [])
+        principal_list = query_params.get('principal', [])
         wallet_list = query_params.get('wallet', [])
         error_list = query_params.get('error', [])
         
@@ -212,9 +218,11 @@ class CallbackHandler(BaseHTTPRequestHandler):
             self._send_response(f"<h1>Authentication Failed</h1><p>{error_list[0]}</p>")
             return
         
-        if token_list and wallet_list:
+        identity_list = principal_list or wallet_list
+        if token_list and identity_list:
             CallbackHandler.token = token_list[0]
-            CallbackHandler.wallet = wallet_list[0]
+            CallbackHandler.principal = identity_list[0]
+            CallbackHandler.wallet = wallet_list[0] if wallet_list else None
             self._send_response("<h1>✓ Success!</h1><p>Authentication successful. You can close this window.</p>")
         else:
             CallbackHandler.error = "Missing token or wallet in callback"
@@ -232,43 +240,26 @@ class CallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-@app.command("login")
-def login(
+def _browser_login(
     auth_url: str = typer.Option(None, "--auth-url", help="Auth frontend URL (e.g., https://auth.flair.example/login)"),
     open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
-    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists")
+    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
+    wallet: bool = False,
 ):
-    """Login using Sign-In With Solana via browser OAuth2 callback flow.
-    
-    If a valid session exists, you will be logged in automatically without re-authenticating.
-    Use --force to re-authenticate and create a new session.
-    
-    The CLI will:
-    1. Start a temporary local HTTP server
-    2. Open your browser to the auth page with a redirect_uri
-    3. Wait for you to sign in with your wallet
-    4. Capture the signed token when the frontend redirects back
-    5. Save the token locally with expiration (configurable, default 24 hours)
-    
-    \b
-    Configure auth URL via (in order of precedence):
-    - --auth-url flag
-    - FLAIR_AUTH_URL environment variable
-    - flair config set --auth-url <url>
-    """
+    """Run a browser authentication flow and receive its callback token."""
     try:
         # Check if valid session already exists
         if not force:
             existing_session = session_mod.load_session()
             if existing_session:
                 console.print("✓ [bold green]You are already logged in[/bold green]")
-                console.print(f"Wallet: [bold]{existing_session.wallet_address}[/bold]")
+                console.print(f"Principal: [bold]{existing_session.principal or existing_session.wallet_address}[/bold]")
                 console.print(f"Session expires at: {existing_session.expires_at}")
                 console.print("[dim]Use --force to re-authenticate[/dim]")
                 return
         
         # Resolve auth URL with precedence
-        resolved_auth_url = _get_auth_url(auth_url)
+        resolved_auth_url = _get_auth_url(auth_url, wallet=wallet)
         
         # Get session timeout from config
         cfg = config_mod.load_config()
@@ -276,6 +267,7 @@ def login(
         
         # Reset callback handler state
         CallbackHandler.token = None
+        CallbackHandler.principal = None
         CallbackHandler.wallet = None
         CallbackHandler.error = None
         
@@ -292,7 +284,10 @@ def login(
         console.print(f"[dim]Callback server listening on {callback_url}[/dim]")
         
         # Build auth URL with redirect_uri parameter
-        auth_url_with_redirect = f"{resolved_auth_url}{'&' if '?' in resolved_auth_url else '?'}redirect_uri={callback_url}"
+        parsed_auth_url = urlparse(resolved_auth_url)
+        query = parse_qs(parsed_auth_url.query)
+        query["redirect_uri"] = [callback_url]
+        auth_url_with_redirect = urlunparse(parsed_auth_url._replace(query=urlencode(query, doseq=True)))
         
         if open_browser:
             webbrowser.open(auth_url_with_redirect)
@@ -306,7 +301,7 @@ def login(
         start_time = time.time()
         timeout = 300
         while time.time() - start_time < timeout:
-            if CallbackHandler.token and CallbackHandler.wallet:
+            if CallbackHandler.token and CallbackHandler.principal:
                 server.shutdown()
                 
                 # Calculate expiration time
@@ -314,17 +309,15 @@ def login(
                 expires_at_str = expires_at.isoformat() + "Z"
                 
                 # Save session with expiration
-                # SSH-MIGRATION: wallet_address currently stores Solana pubkey from browser auth;
-                # rename/extend when login moves to SSH key fingerprint or OpenSSH identity.
                 s = session_mod.Session(
                     token=CallbackHandler.token,
-                    principal=CallbackHandler.wallet,
+                    principal=CallbackHandler.principal,
                     wallet_address=CallbackHandler.wallet,
                     expires_at=expires_at_str
                 )
                 session_mod.save_session(s)
                 console.print("✓ [bold green]Login successful[/bold green]")
-                console.print(f"Principal: [bold]{CallbackHandler.wallet}[/bold]")
+                console.print(f"Principal: [bold]{CallbackHandler.principal}[/bold]")
                 console.print(f"Session expires at: [dim]{expires_at_str}[/dim]")
                 return
             
@@ -338,13 +331,33 @@ def login(
         server.shutdown()
         console.print("[bold red]Authentication timeout (5 minutes)[/bold red]")
         raise typer.Exit(code=1)
-        
+
     except RuntimeError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[bold red]Login failed:[/bold red] {e}", style="bold red")
         raise typer.Exit(code=1)
+
+
+@app.command("login")
+def login(
+    auth_url: str = typer.Option(None, "--auth-url", help="Google authentication frontend URL"),
+    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
+    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
+):
+    """Login with Google OAuth2 through the default authentication page."""
+    return _browser_login(auth_url=auth_url, open_browser=open_browser, force=force, wallet=False)
+
+
+@app.command("wallet")
+def wallet_login(
+    auth_url: str = typer.Option(None, "--auth-url", help="Phantom wallet authentication frontend URL"),
+    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
+    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
+):
+    """Login with the Phantom wallet authentication flow."""
+    return _browser_login(auth_url=auth_url, open_browser=open_browser, force=force, wallet=True)
 
 
 @app.command("status")

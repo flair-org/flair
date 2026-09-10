@@ -66,7 +66,7 @@ This installs the declared dependencies and registers the `flair` executable fro
 
 ## Authentication
 
-Log in through the browser-based SIWS flow:
+By default, `flair auth login` uses the browser-based Google OAuth2 flow:
 
 ```bash
 flair auth login
@@ -82,9 +82,33 @@ flair auth login --no-browser
 flair auth login --auth-url https://auth.example.com/login
 ```
 
-The authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`.
+The Google authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`.
 
 `flair auth status` displays the logged-in principal and session expiration. `flair auth logout` clears the locally cached session token.
+
+### Phantom wallet authentication
+
+Use `flair auth wallet` when you want to authenticate with the Phantom/Solana wallet flow instead of Google OAuth2:
+
+```bash
+flair auth wallet
+flair auth wallet --force
+flair auth wallet --auth-url http://localhost:5173/wallet
+```
+
+The wallet flow uses `FLAIR_WALLET_AUTH_URL` for its default URL override. If it is not set, the CLI uses `/wallet` on the configured authentication frontend.
+
+### Authentication callback flow
+
+Both browser flows use a temporary local callback server:
+
+1. The CLI starts a local callback URL and opens the authentication frontend with a `redirect_uri` query parameter.
+2. The frontend displays the selected sign-in page and completes Google OAuth2 or Phantom wallet authentication.
+3. After successful authentication, the frontend redirects the browser back to the CLI callback URL.
+4. The CLI stores the returned session token and principal in `~/.flair/session.json`.
+5. The browser displays a success message and can be closed.
+
+Google OAuth2 returns `sessionToken`, `principal`, and `userId`. The Phantom wallet flow returns the wallet `token` and `wallet` address. The CLI accepts both callback formats.
 
 ### SSH Integration
 
