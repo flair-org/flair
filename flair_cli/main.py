@@ -2,11 +2,27 @@
 Entry point for the Flair CLI.
 This creates a Typer app and mounts subcommand groups from the `cli` package.
 """
+import os
+import sys
+
+# Silence verbose TensorFlow C++ runtime and oneDNN notices
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+
+if sys.platform == "win32":
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from typing import Optional
 import typer
 from rich.console import Console
 
-from flair_cli.cli import auth, config, init, clone, basemodel, branch, add, zkp, push, pull, params, new, commit, revert, reset, metrics, merge, status as status_cmd, log as log_cmd, diff as diff_cmd
+from flair_cli.cli import auth, config, init, clone, remote, basemodel, branch, add, zkp, push, pull, params, new, commit, revert, reset, metrics, merge, status as status_cmd, log as log_cmd, diff as diff_cmd
 
 app = typer.Typer(help="Flair - versioning Machine Learning models")
 console = Console()
@@ -14,28 +30,25 @@ console = Console()
 # Mount subcommands
 app.add_typer(auth.app, name="auth", help="Browser authentication and SSH setup")
 app.add_typer(config.app, name="config", help="Configuration management")
-app.add_typer(init.app, name="init", help="Initialize repository in current directory")
-app.add_typer(clone.app, name="clone", help="Clone a remote repository")
+app.add_typer(remote.app, name="remote", help="Manage remote repository connections")
 app.add_typer(basemodel.app, name="basemodel", help="Manage base models")
-app.add_typer(branch.app, name="branch", help="Branch management")
-app.add_typer(new.app, name="new", help="Create sample model files")
-app.add_typer(add.app, name="add", help="Create a new local commit")
 app.add_typer(params.app, name="params", help="Extract and create model parameters")
 app.add_typer(metrics.app, name="metrics", help="Stage and manage commit metrics")
 app.add_typer(merge.app, name="merge", help="Create lineage-based merge candidates")
 app.add_typer(zkp.app, name="zkp", help="Zero-Knowledge Proof operations")
-app.add_typer(commit.app, name="commit", help="Finalize commit with message and determine type")
-app.add_typer(push.app, name="push", help="Push commits to remote repository")
-app.add_typer(pull.app, name="pull", help="Pull latest commit statuses from remote")
-app.add_typer(revert.app, name="revert", help="Revert to previous commit")
-app.add_typer(reset.app, name="reset", help="Reset HEAD to previous local commit")
 
-# Add checkout as top-level command for git-like experience
-@app.command()
-def checkout(branch_name: str = typer.Argument(..., help="Branch name to switch to")):
-    """Switch to a different branch (alias for 'branch checkout')."""
-    from flair_cli.cli.branch import checkout as branch_checkout
-    branch_checkout(branch_name)
+# Mount top-level Git-like commands
+app.command(name="init", help="Initialize repository in current directory")(init.init)
+app.command(name="clone", help="Clone a remote repository")(clone.clone)
+app.command(name="new", help="Create sample model files")(new.new)
+app.command(name="add", help="Create a new local commit")(add.add)
+app.command(name="commit", help="Finalize commit with message and determine type")(commit.finalize)
+app.command(name="push", help="Push commits to remote repository")(push.push)
+app.command(name="pull", help="Pull latest commit statuses from remote")(pull.pull)
+app.command(name="revert", help="Revert to previous commit")(revert.revert)
+app.command(name="reset", help="Reset HEAD to previous local commit")(reset.reset)
+app.command(name="branch", help="List all branches or create a new branch")(branch.list_or_create_branch)
+app.command(name="checkout", help="Switch to a different branch with intelligent artifact caching")(branch.checkout)
 
 
 @app.command()

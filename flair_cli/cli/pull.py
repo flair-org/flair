@@ -36,7 +36,13 @@ def pull(
             raise typer.Exit(code=1)
 
         repo_config = _load_repo_config()
-        repo_hash = repo_config.get("repoHash") or repo_config.get("metadata", {}).get("repoHash")
+        repo_hash = (
+            repo_config.get("repoHash")
+            or repo_config.get("hash")
+            or repo_config.get("id")
+            or repo_config.get("metadata", {}).get("repoHash")
+        )
+        
         if not repo_hash:
             console.print("[red]Repository hash not found in config.[/red]")
             raise typer.Exit(code=1)

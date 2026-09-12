@@ -32,7 +32,7 @@ def view():
     api_source = "env" if os.environ.get("FLAIR_API_BASE") else ("config" if config_mod.CONFIG_PATH.exists() else "default")
     table.add_row("api_base_url", api_base, f"[dim]({api_source})[/dim]")
     
-    auth = os.environ.get("FLAIR_AUTH_URL") or cfg.auth_url or "http://localhost:5173"
+    auth = os.environ.get("FLAIR_AUTH_URL") or cfg.auth_url or "http://localhost:3000"
     auth_source = "env" if os.environ.get("FLAIR_AUTH_URL") else ("config" if config_mod.CONFIG_PATH.exists() else "default")
     table.add_row("auth_url", auth, f"[dim]({auth_source})[/dim]")
     

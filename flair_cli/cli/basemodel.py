@@ -224,6 +224,9 @@ def add(
         raise typer.Exit(code=1)
 
 
+app.command(name="upload", help="Alias for 'flair basemodel add'")(add)
+
+
 @app.command()
 def check():
     """Check if current repository has a base model."""

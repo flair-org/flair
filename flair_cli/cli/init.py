@@ -65,9 +65,32 @@ def init(
         resp = api_client.create_repo(payload)
 
         flair_dir.mkdir(exist_ok=True)
+        (flair_dir / ".params").mkdir(exist_ok=True)
+        (flair_dir / ".zkp").mkdir(exist_ok=True)
+        (flair_dir / ".prev_params").mkdir(exist_ok=True)
+        (flair_dir / ".prev_zkp").mkdir(exist_ok=True)
+        (flair_dir / ".local_commits").mkdir(exist_ok=True)
+
         repo_file = flair_dir / "repo.json"
         with open(repo_file, "w") as f:
             json.dump(resp, f, indent=2)
+
+        # Initialize HEAD file if it doesn't exist
+        head_file = flair_dir / "HEAD"
+        if not head_file.exists():
+            head_data = {
+                "currentBranch": "main",
+                "branchHash": None,
+                "previousCommit": None
+            }
+            with open(head_file, "w") as f:
+                json.dump(head_data, f, indent=2)
+
+        # Create basic ignore file
+        ignore_file = Path.cwd() / ".flairignore"
+        if not ignore_file.exists():
+            with open(ignore_file, "w") as f:
+                f.write("__pycache__/\n*.pyc\n.venv/\nvenv/\n.env\n*.tmp\n")
 
         settings_file = Path.cwd() / "config.yaml"
         if not settings_file.exists():

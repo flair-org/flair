@@ -507,6 +507,7 @@ def finalize(
         commit_data["classSpaceChanged"] = class_space_changed
         commit_data["message"] = message
         commit_data["commitType"] = commit_type
+        commit_data["previousCommitHash"] = previous_commit_hash
 
         if commit_type == "CHECKPOINT" and architecture_changed:
             commit_data["deltaParams"] = None

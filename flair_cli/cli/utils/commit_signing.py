@@ -27,6 +27,8 @@ def normalize_json_value(value: Any) -> Any:
         return {k: normalize_json_value(value[k]) for k in sorted(value.keys())}
     elif isinstance(value, list):
         return [normalize_json_value(item) for item in value]
+    elif isinstance(value, float) and value.is_integer():
+        return int(value)
     else:
         return value
 
@@ -107,6 +109,45 @@ def _compute_fingerprint_from_blob(public_key_blob: bytes) -> str:
     return f"ssh:SHA256:{fingerprint}"
 
 
+def _clean_fingerprint(fp: str) -> str:
+    """Normalize fingerprint string by stripping 'ssh:' prefix and extra whitespace."""
+    clean = fp.strip()
+    if clean.startswith("ssh:"):
+        clean = clean[4:]
+    return clean
+
+
+class LocalDiskSSHKey:
+    """Wrapper for a local Ed25519 SSH private key file to act like an ssh-agent key."""
+    def __init__(self, key_path: Path):
+        self.key_path = key_path
+        from cryptography.hazmat.primitives import serialization
+        key_bytes = key_path.read_bytes()
+        self._private_key = serialization.load_ssh_private_key(key_bytes, password=None)
+
+    def asbytes(self) -> bytes:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        pub_key: Ed25519PublicKey = self._private_key.public_key()
+        # OpenSSH wire format for ed25519 public key
+        # string "ssh-ed25519" + string <32-byte raw pubkey>
+        raw_pub = pub_key.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        msg = Message()
+        msg.add_string("ssh-ed25519")
+        msg.add_string(raw_pub)
+        return msg.asbytes()
+
+    def sign_ssh_data(self, data: bytes) -> Message:
+        raw_sig = self._private_key.sign(data)
+        msg = Message()
+        msg.add_string("ssh-ed25519")
+        msg.add_string(raw_sig)
+        return msg
+
+
 def _key_blob_from_ssh_message(message: Message) -> bytes:
     parsed = Message(message.asbytes())
     _ = parsed.get_text()
@@ -114,7 +155,7 @@ def _key_blob_from_ssh_message(message: Message) -> bytes:
 
 
 def load_ssh_agent_identities() -> list[SSHAgentIdentity]:
-    """Load all keys currently available through ssh-agent."""
+    """Load all keys currently available through ssh-agent or local default key."""
     identities: list[SSHAgentIdentity] = []
     try:
         agent = Agent()
@@ -130,7 +171,28 @@ def load_ssh_agent_identities() -> list[SSHAgentIdentity]:
                 )
             )
     except Exception:
-        return []
+        pass
+
+    # Fallback to local default SSH key if agent has no keys or is unavailable
+    from pathlib import Path
+    default_key = Path.home() / ".ssh" / "id_ed25519_flair"
+    if default_key.exists():
+        try:
+            local_key = LocalDiskSSHKey(default_key)
+            public_blob = local_key.asbytes()
+            public_key_openssh = _normalize_public_key_blob(public_blob)
+            fingerprint = _compute_fingerprint_from_blob(public_blob)
+            # Avoid duplicate if already loaded from agent
+            if not any(_clean_fingerprint(i.fingerprint) == _clean_fingerprint(fingerprint) for i in identities):
+                identities.append(
+                    SSHAgentIdentity(
+                        agent_key=local_key,
+                        public_key_openssh=public_key_openssh,
+                        fingerprint=fingerprint,
+                    )
+                )
+        except Exception:
+            pass
 
     return identities
 
@@ -148,12 +210,14 @@ def sign_canonical_payload(payload: Dict[str, Any], identity: SSHAgentIdentity) 
 
 def find_agent_identity_by_fingerprint(fingerprint: str, identities: Optional[Sequence[SSHAgentIdentity]] = None) -> Optional[SSHAgentIdentity]:
     candidate_identities = list(identities) if identities is not None else load_ssh_agent_identities()
+    clean_target = _clean_fingerprint(fingerprint)
     for identity in candidate_identities:
-        if identity.fingerprint == fingerprint:
+        if _clean_fingerprint(identity.fingerprint) == clean_target:
             return identity
     return None
 
 
 def verify_ssh_identity_matches_fingerprint(identity: SSHAgentIdentity, fingerprint: str) -> bool:
     """Verify the loaded ssh-agent identity matches a registered SSH fingerprint."""
-    return identity.fingerprint == fingerprint
+    return _clean_fingerprint(identity.fingerprint) == _clean_fingerprint(fingerprint)
+

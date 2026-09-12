@@ -44,6 +44,18 @@ def _get_commit_by_hash(commit_hash: str) -> tuple[dict, Path] | None:
         with open(commit_file, "r") as f:
             return json.load(f), commit_dir
 
+    for c_dir in local_commits_dir.iterdir():
+        if c_dir.is_dir():
+            c_file = c_dir / "commit.json"
+            if c_file.exists():
+                try:
+                    with open(c_file, "r") as f:
+                        data = json.load(f)
+                        if data.get("commitHash") == commit_hash:
+                            return data, c_dir
+                except Exception:
+                    pass
+
     return None
 
 

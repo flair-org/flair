@@ -13,14 +13,17 @@ from .utils.local_commits import _get_latest_local_commit
 app = typer.Typer()
 console = Console()
 @app.command()
-def add():
+def add(
+    force: bool = typer.Option(False, "--force", "-f", help="Discard incomplete staged commit and start fresh.")
+):
     """Create a new local commit.
     
     This creates a commit JSON file in .flair/.local_commits/ with a UUIDv4 hash.
     The commit will be associated with any params and ZKP files created next.
     
     Examples:
-      flair add    # Creates a new local commit
+      flair add           # Creates a new local commit
+      flair add --force   # Discards incomplete staged commit and starts fresh
     """
     try:
         # Check if we're in a Flair repository
@@ -32,16 +35,22 @@ def add():
         # Check if there's an incomplete commit
         latest_commit = _get_latest_local_commit()
         if latest_commit:
-            commit_data, _ = latest_commit
-            if commit_data.get("params") is None or commit_data.get("zkp") is None:
-                console.print("[red]✗ Cannot create a new commit yet.[/red]")
-                console.print(f"[yellow]The current commit ({commit_data.get('commitHash')[:8]}...) is incomplete:[/yellow]")
-                if commit_data.get("params") is None:
-                    console.print("[yellow]  • Missing: params (run 'flair params create')[/yellow]")
-                if commit_data.get("zkp") is None:
-                    console.print("[yellow]  • Missing: ZKP proof (run 'flair zkp create')[/yellow]")
-                console.print("[yellow]Complete the current commit before creating a new one.[/yellow]")
-                raise typer.Exit(code=1)
+            commit_data, commit_dir = latest_commit
+            if commit_data.get("params") is None or commit_data.get("zkp") is None or commit_data.get("message") is None:
+                if force:
+                    import shutil
+                    if commit_dir.exists():
+                        shutil.rmtree(commit_dir)
+                    console.print("[yellow]Discarded incomplete staged commit.[/yellow]")
+                else:
+                    console.print("[red]✗ Cannot create a new commit yet.[/red]")
+                    console.print(f"[yellow]The current commit ({commit_data.get('commitHash')[:8]}...) is incomplete:[/yellow]")
+                    if commit_data.get("params") is None:
+                        console.print("[yellow]  • Missing: params (run 'flair params create')[/yellow]")
+                    if commit_data.get("zkp") is None:
+                        console.print("[yellow]  • Missing: ZKP proof (run 'flair zkp create')[/yellow]")
+                    console.print("[yellow]Complete the current commit or run 'flair add --force' to discard it.[/yellow]")
+                    raise typer.Exit(code=1)
         
         # Load repo info to get framework
         repo_file = flair_dir / "repo.json"

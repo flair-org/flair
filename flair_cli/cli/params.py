@@ -346,6 +346,7 @@ def create(
     model: str = typer.Option(None, "--model", help="Path to model file"),
     classes: str = typer.Option(None, "--classes", help="Comma-separated ordered class labels (e.g., cat,dog,bird)"),
     class_space_file: str = typer.Option(None, "--class-space-file", help="Path to YAML/JSON/TXT class-space declaration"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing parameters in staged commit"),
 ):
     """Extract model weights and save as params for the latest local commit.
     
@@ -355,6 +356,7 @@ def create(
     Examples:
       flair params create                  # Auto-detect model
       flair params create --model model.pt # Specify model file
+      flair params create --model model.pt --force # Overwrite existing params
     """
     try:
         # Check if we're in a Flair repository
@@ -372,9 +374,9 @@ def create(
         commit_data, commit_dir = latest_commit
         
         # Check if params already exist in this commit
-        if commit_data.get("params") is not None:
+        if commit_data.get("params") is not None and not force:
             console.print("[red]✗ This commit already has parameters.[/red]")
-            console.print("[yellow]To create a new commit with different parameters, run 'flair add' first.[/yellow]")
+            console.print("[yellow]Use --force to overwrite, or 'flair add --force' to start fresh.[/yellow]")
             raise typer.Exit(code=1)
         
         commit_hash = commit_data.get("commitHash")
