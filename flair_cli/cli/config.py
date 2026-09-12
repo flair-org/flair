@@ -43,6 +43,16 @@ def view():
     console.print(f"\n[dim]Config file: {config_mod.CONFIG_PATH}[/dim]")
 
 
+@app.command("reset")
+def reset():
+    """Reset config.yaml to Flair's built-in defaults without clearing the session."""
+    default_cfg = config_mod.FlairConfig()
+    config_mod.save_config(default_cfg)
+    console.print(f"[green]Configuration reset to defaults.[/green]")
+    console.print(f"[dim]Config saved to {config_mod.CONFIG_PATH}[/dim]")
+    console.print("[dim]Authentication session and repository data were preserved.[/dim]")
+
+
 @app.command("set")
 def set_config(
     api_base_url: str = typer.Option(None, help="Backend API base URL"),
