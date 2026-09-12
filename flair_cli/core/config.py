@@ -65,7 +65,7 @@ def _generate_default_config():
     default_cfg = FlairConfig()
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            yaml.safe_dump(default_cfg.dict(exclude_none=False), f, default_flow_style=False)
+            yaml.safe_dump(default_cfg.model_dump(exclude_none=False), f, default_flow_style=False)
     except Exception as e:
         print(f"Warning: Could not create {CONFIG_PATH}: {e}")
 
@@ -74,4 +74,4 @@ def save_config(cfg: FlairConfig):
     """Save config to file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(cfg.dict(exclude_none=True), f, default_flow_style=False)
+        yaml.safe_dump(cfg.model_dump(exclude_none=True), f, default_flow_style=False)
