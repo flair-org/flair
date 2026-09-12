@@ -90,8 +90,8 @@ The shared authentication URL can also be configured with the `FLAIR_AUTH_URL` e
 
 The selected browser flow uses a temporary local callback server:
 
-1. The CLI starts a local callback URL and opens the authentication frontend with a `redirect_uri` query parameter.
-2. The frontend displays the selected sign-in page and completes Google OAuth2 or Phantom wallet authentication.
+1. The CLI starts a local callback URL and opens the shared `/signin` page with a `cli_redirect` query parameter.
+2. The frontend displays Google OAuth2 and Phantom wallet options and completes the provider selected by the user.
 3. After successful authentication, the frontend redirects the browser back to the CLI callback URL.
 4. The CLI stores the returned session token and principal in `~/.flair/session.json`.
 5. The browser displays a success message and can be closed.
