@@ -27,8 +27,8 @@ from flair_cli.cli import auth, config, init, clone, remote, basemodel, branch, 
 app = typer.Typer(help="Flair - versioning Machine Learning models")
 console = Console()
 
-# Mount command groups (subcommands)
-app.add_typer(auth.app, name="auth", help="Authentication commands (SIWS login + SSH setup)")
+# Mount subcommands
+app.add_typer(auth.app, name="auth", help="Browser authentication and SSH setup")
 app.add_typer(config.app, name="config", help="Configuration management")
 app.add_typer(remote.app, name="remote", help="Manage remote repository connections")
 app.add_typer(basemodel.app, name="basemodel", help="Manage base models")

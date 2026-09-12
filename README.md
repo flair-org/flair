@@ -66,7 +66,7 @@ This installs the declared dependencies and registers the `flair` executable fro
 
 ## Authentication
 
-Log in through the browser-based SIWS flow:
+By default, `flair auth login` opens the shared browser-based `/signin` page. Choose either Google OAuth2 or Phantom wallet authentication there:
 
 ```bash
 flair auth login
@@ -74,7 +74,7 @@ flair auth status
 flair auth logout
 ```
 
-By default, `flair auth login` opens the configured authentication page and waits for the local callback. Use `--force` to replace an existing valid session, or `--no-browser` to print the login URL instead of opening it automatically:
+`flair auth login` waits for the local callback after the selected provider completes authentication. Use `--force` to replace an existing valid session, or `--no-browser` to print the shared login URL instead of opening it automatically:
 
 ```bash
 flair auth login --force
@@ -82,9 +82,21 @@ flair auth login --no-browser
 flair auth login --auth-url https://auth.example.com/login
 ```
 
-The authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`.
+The shared authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`. It should point to the frontend `/signin` route.
 
 `flair auth status` displays the logged-in principal and session expiration. `flair auth logout` clears the locally cached session token.
+
+### Authentication callback flow
+
+The selected browser flow uses a temporary local callback server:
+
+1. The CLI starts a local callback URL and opens the shared `/signin` page with a `cli_redirect` query parameter.
+2. The frontend displays Google OAuth2 and Phantom wallet options and completes the provider selected by the user.
+3. After successful authentication, the frontend redirects the browser back to the CLI callback URL.
+4. The CLI stores the returned session token and principal in `~/.flair/session.json`.
+5. The browser displays a success message and can be closed.
+
+Google OAuth2 returns `sessionToken`, `principal`, and `userId`. The Phantom wallet flow returns the wallet `token` and `wallet` address. The CLI accepts both callback formats.
 
 ### SSH Integration
 

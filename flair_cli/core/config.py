@@ -27,8 +27,8 @@ ALLOWED_BASE_MODEL_EXTENSIONS = [
 
 
 class FlairConfig(BaseModel):
-    api_base_url: Optional[str] = "http://localhost:2112"
-    auth_url: Optional[str] = "http://localhost:3000"
+    api_base_url: Optional[str] = "https://flair-test-backend.onrender.com/"
+    auth_url: Optional[str] = "https://flairhub-frontend.netlify.app/signin"
     # Session timeout in hours (default 7 days)
     session_timeout_hours: Optional[int] = 168
 
