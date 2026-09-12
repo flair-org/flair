@@ -66,7 +66,7 @@ This installs the declared dependencies and registers the `flair` executable fro
 
 ## Authentication
 
-By default, `flair auth login` uses the browser-based Google OAuth2 flow:
+By default, `flair auth login` opens the shared browser-based `/signin` page. Choose either Google OAuth2 or Phantom wallet authentication there:
 
 ```bash
 flair auth login
@@ -74,7 +74,7 @@ flair auth status
 flair auth logout
 ```
 
-By default, `flair auth login` opens the configured authentication page and waits for the local callback. Use `--force` to replace an existing valid session, or `--no-browser` to print the login URL instead of opening it automatically:
+`flair auth login` waits for the local callback after the selected provider completes authentication. Use `--force` to replace an existing valid session, or `--no-browser` to print the shared login URL instead of opening it automatically:
 
 ```bash
 flair auth login --force
@@ -82,25 +82,13 @@ flair auth login --no-browser
 flair auth login --auth-url https://auth.example.com/login
 ```
 
-The Google authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`.
+The shared authentication URL can also be configured with the `FLAIR_AUTH_URL` environment variable or with `flair config set --auth-url <url>`. It should point to the frontend `/signin` route.
 
 `flair auth status` displays the logged-in principal and session expiration. `flair auth logout` clears the locally cached session token.
 
-### Phantom wallet authentication
-
-Use `flair auth wallet` when you want to authenticate with the Phantom/Solana wallet flow instead of Google OAuth2:
-
-```bash
-flair auth wallet
-flair auth wallet --force
-flair auth wallet --auth-url http://localhost:5173/wallet
-```
-
-The wallet flow uses `FLAIR_WALLET_AUTH_URL` for its default URL override. If it is not set, the CLI uses `/wallet` on the configured authentication frontend.
-
 ### Authentication callback flow
 
-Both browser flows use a temporary local callback server:
+The selected browser flow uses a temporary local callback server:
 
 1. The CLI starts a local callback URL and opens the authentication frontend with a `redirect_uri` query parameter.
 2. The frontend displays the selected sign-in page and completes Google OAuth2 or Phantom wallet authentication.

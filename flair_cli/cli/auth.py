@@ -1,9 +1,9 @@
 """
-Auth commands (SIWS login plus SSH key setup helpers).
+Auth commands (browser provider selection plus SSH key setup helpers).
 
 Design: The CLI starts a temporary local HTTP callback server, opens the browser with the
-auth URL + redirect_uri parameter. The frontend signs the user in, then redirects back to
-the CLI's callback URL with the signed token. The CLI captures the token and saves it.
+auth URL + cli_redirect parameter. The frontend signs the user in, then redirects back to
+the CLI's callback URL with the session token. The CLI captures the token and saves it.
 
 Session tokens are cached in ~/.flair/session.json with an expiration time (configurable,
 default 7 days). If a valid session exists, users are not prompted to re-authenticate.
@@ -37,33 +37,29 @@ console = Console()
 app.add_typer(ssh_app, name="ssh", help="SSH key setup and environment helpers")
 
 
-def _get_auth_url(auth_url_override: str | None = None, wallet: bool = False) -> str:
+def _get_auth_url(auth_url_override: str | None = None) -> str:
     """
     Resolve auth URL with precedence:
     1. Command-line override (--auth-url)
-    2. Environment variable (FLAIR_AUTH_URL or FLAIR_WALLET_AUTH_URL)
+    2. Environment variable (FLAIR_AUTH_URL)
     3. Config file (~/.flair/config.yaml)
     4. Built-in default (localhost:5173 for dev)
     
-    Returns the auth frontend URL (e.g., http://localhost:5173/)
+    Returns the shared auth frontend URL (e.g., http://localhost:5173/signin)
     """
     # Tier 1: CLI override
     if auth_url_override:
         return auth_url_override.rstrip("/")
     
     # Tier 2: Environment variable
-    env_name = "FLAIR_WALLET_AUTH_URL" if wallet else "FLAIR_AUTH_URL"
-    env_url = os.environ.get(env_name)
+    env_url = os.environ.get("FLAIR_AUTH_URL")
     if env_url:
         return env_url.rstrip("/")
     
     # Tier 3: Config file
     cfg = config_mod.load_config()
     if cfg.auth_url:
-        configured_url = cfg.auth_url.rstrip("/")
-        if wallet and not configured_url.endswith("/wallet"):
-            configured_url += "/wallet"
-        return configured_url
+        return cfg.auth_url.rstrip("/")
 
     # # No config found
     # raise RuntimeError(
@@ -74,7 +70,7 @@ def _get_auth_url(auth_url_override: str | None = None, wallet: bool = False) ->
     # )
     
     # Should not reach here since FlairConfig has a default, but just in case
-    return "http://localhost:5173/wallet" if wallet else "http://localhost:5173/"
+    return "http://localhost:5173/signin"
 
 
 def _resolve_ssh_key_path(key_path_override: str | None = None) -> Path:
@@ -241,10 +237,9 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
 
 def _browser_login(
-    auth_url: str = typer.Option(None, "--auth-url", help="Auth frontend URL (e.g., https://auth.flair.example/login)"),
-    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
-    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
-    wallet: bool = False,
+    auth_url: str | None,
+    open_browser: bool,
+    force: bool,
 ):
     """Run a browser authentication flow and receive its callback token."""
     try:
@@ -259,7 +254,7 @@ def _browser_login(
                 return
         
         # Resolve auth URL with precedence
-        resolved_auth_url = _get_auth_url(auth_url, wallet=wallet)
+        resolved_auth_url = _get_auth_url(auth_url)
         
         # Get session timeout from config
         cfg = config_mod.load_config()
@@ -283,10 +278,11 @@ def _browser_login(
         
         console.print(f"[dim]Callback server listening on {callback_url}[/dim]")
         
-        # Build auth URL with redirect_uri parameter
+        # Build auth URL with a dedicated CLI callback parameter. The frontend's
+        # regular `redirect` parameter is reserved for internal page navigation.
         parsed_auth_url = urlparse(resolved_auth_url)
         query = parse_qs(parsed_auth_url.query)
-        query["redirect_uri"] = [callback_url]
+        query["cli_redirect"] = [callback_url]
         auth_url_with_redirect = urlunparse(parsed_auth_url._replace(query=urlencode(query, doseq=True)))
         
         if open_browser:
@@ -342,22 +338,12 @@ def _browser_login(
 
 @app.command("login")
 def login(
-    auth_url: str = typer.Option(None, "--auth-url", help="Google authentication frontend URL"),
-    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
+    auth_url: str = typer.Option(None, "--auth-url", help="Shared authentication frontend URL"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Print the login URL instead of opening a browser"),
     force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
 ):
-    """Login with Google OAuth2 through the default authentication page."""
-    return _browser_login(auth_url=auth_url, open_browser=open_browser, force=force, wallet=False)
-
-
-@app.command("wallet")
-def wallet_login(
-    auth_url: str = typer.Option(None, "--auth-url", help="Phantom wallet authentication frontend URL"),
-    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Automatically open browser"),
-    force: bool = typer.Option(False, "--force", help="Force re-authentication even if valid session exists"),
-):
-    """Login with the Phantom wallet authentication flow."""
-    return _browser_login(auth_url=auth_url, open_browser=open_browser, force=force, wallet=True)
+    """Open the shared sign-in page and let the user choose an authentication provider."""
+    return _browser_login(auth_url=auth_url, open_browser=not no_browser, force=force)
 
 
 @app.command("status")
