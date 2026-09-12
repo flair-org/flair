@@ -38,6 +38,7 @@ This installs the declared dependencies and registers the `flair` executable fro
    - [Init repository with automatic base model detection](#init-repository-with-automatic-base-model-detection)
    - [Skip base model prompt during init](#skip-base-model-prompt-during-init)
 - [Clone a repository](#cloning-a-repository)
+- [Remote Commands](#remote-commands)
 - [Base model Commands](#base-model-commands)
    - [Upload base model manually](#upload-base-model-manually)
    - [Replace existing base model](#replace-existing-base-model-admin-command)
@@ -486,6 +487,48 @@ flair clone <repo_hash> --branch-hash main
 ## ✓ Downloaded base_model, params, zkml_proof, zkml_settings, zkml_verification_key
 ## Current branch: main
 ```
+
+## Remote Commands
+
+Remote commands connect an initialized local directory to an existing Flair repository. The repository hash can be copied from the Flair web application or returned by the backend.
+
+### Add a remote repository
+
+Run this from the model directory you want to connect. The current command syntax is:
+
+```bash
+flair remote add origin <repo_hash>
+```
+
+The remote name defaults to `origin`, so this is also valid:
+
+```bash
+```
+
+Use `origin` as the remote name for the standard Git-like setup. This creates or updates the local `.flair/` metadata, downloads repository branch information, and selects the remote default branch when one is available. Authenticate first with:
+
+```bash
+flair auth login
+```
+
+### List or view configured remotes
+
+`list` and `view` are aliases:
+
+```bash
+flair remote list
+flair remote view
+```
+
+The output shows the remote name, repository name, repository hash, and configured backend URL.
+
+### Remove a remote reference
+
+```bash
+flair remote remove origin
+```
+
+Removing a remote only removes the remote name from `.flair/repo.json`; it does not delete the local repository history or the remote repository.
 
 ## Base model Commands
 
