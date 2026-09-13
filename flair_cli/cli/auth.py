@@ -211,7 +211,11 @@ class CallbackHandler(BaseHTTPRequestHandler):
         
         if error_list:
             CallbackHandler.error = error_list[0]
-            self._send_response(f"<h1>Authentication Failed</h1><p>{error_list[0]}</p>")
+            self._send_response(
+                "Authentication failed",
+                error_list[0],
+                success=False,
+            )
             return
         
         identity_list = principal_list or wallet_list
@@ -219,15 +223,87 @@ class CallbackHandler(BaseHTTPRequestHandler):
             CallbackHandler.token = token_list[0]
             CallbackHandler.principal = identity_list[0]
             CallbackHandler.wallet = wallet_list[0] if wallet_list else None
-            self._send_response("<h1>✓ Success!</h1><p>Authentication successful. You can close this window.</p>")
+            self._send_response(
+                "Authentication successful",
+                "You are signed in to Flair. You can close this window and return to your terminal.",
+            )
         else:
             CallbackHandler.error = "Missing token or wallet in callback"
-            self._send_response(f"<h1>Error</h1><p>Missing required parameters</p>")
+            self._send_response(
+                "Authentication incomplete",
+                "The callback did not contain the required authentication details.",
+                success=False,
+            )
     
-    def _send_response(self, html: str):
-        """Send an HTML response."""
+    def _send_response(self, title: str, message: str, success: bool = True):
+        """Send a small, self-contained browser callback page."""
+        accent = "#55d6a6" if success else "#ff7d8a"
+        icon = "&#10003;" if success else "!"
+        html = f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flair | {title}</title>
+    <style>
+        :root {{ color-scheme: dark; }}
+        * {{ box-sizing: border-box; }}
+        body {{
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: #10131a;
+            color: #f4f7fb;
+            font-family: "Segoe UI", system-ui, sans-serif;
+        }}
+        .panel {{
+            width: min(100%, 460px);
+            padding: 42px 36px;
+            text-align: center;
+            background: #191e28;
+            border: 1px solid #2c3545;
+            border-radius: 18px;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, .36);
+        }}
+        .brand {{
+            margin-bottom: 28px;
+            color: #9ca9bc;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+        }}
+        .icon {{
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 22px;
+            display: grid;
+            place-items: center;
+            border: 1px solid {accent};
+            border-radius: 50%;
+            color: {accent};
+            font-size: 30px;
+            font-weight: 700;
+        }}
+        h1 {{ margin: 0; font-size: 25px; line-height: 1.2; }}
+        p {{ margin: 14px 0 0; color: #aeb8c7; font-size: 15px; line-height: 1.6; }}
+        .hint {{ margin-top: 28px; color: #738096; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <main class="panel" role="status">
+        <div class="brand">Flair CLI</div>
+        <div class="icon" aria-hidden="true">{icon}</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <p class="hint">You can safely close this tab.</p>
+    </main>
+</body>
+</html>"""
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
         self.wfile.write(html.encode('utf-8'))
     
@@ -278,11 +354,13 @@ def _browser_login(
         
         console.print(f"[dim]Callback server listening on {callback_url}[/dim]")
         
-        # Build auth URL with a dedicated CLI callback parameter. The frontend's
-        # regular `redirect` parameter is reserved for internal page navigation.
+        # `cli_redirect` is the current callback contract. Keep `redirect_uri`
+        # during the transition so older deployed frontend builds can still
+        # complete the CLI login flow.
         parsed_auth_url = urlparse(resolved_auth_url)
         query = parse_qs(parsed_auth_url.query)
         query["cli_redirect"] = [callback_url]
+        query["redirect_uri"] = [callback_url]
         auth_url_with_redirect = urlunparse(parsed_auth_url._replace(query=urlencode(query, doseq=True)))
         
         if open_browser:
