@@ -209,11 +209,7 @@ def add(
         console.print("[red]Could not determine repository hash[/red]")
         raise typer.Exit(code=1)
     
-    # Check authorization
-    if not _check_user_authorization(repo_hash):
-        console.print("[red]Unauthorized. Only repository owner or admins can add base models.[/red]")
-        raise typer.Exit(code=1)
-    
+
     # Resolve file path
     file_path = Path(filename)
     if not file_path.is_absolute():
@@ -287,11 +283,7 @@ def delete(
     
     repo_hash = repo.get("hash") or repo.get("repoHash")
     
-    # Check authorization
-    if not _check_user_authorization(repo_hash):
-        console.print("[red]Unauthorized. Only repository owner or admins can delete base models.[/red]")
-        raise typer.Exit(code=1)
-    
+
     # Check if model exists
     exists, _ = _check_base_model_exists(repo_hash)
     if not exists:
