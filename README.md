@@ -1476,90 +1476,64 @@ The `commit.json` metadata file includes architecture-aware fields:
 
 ## Complete Workflow Example
 
-Here's a complete workflow from initialization to pushing a commit:
+Here's a complete workflow from initialization through collaborative training,
+local merge creation, and pushing the merged result:
 
 ```bash
-# 1. Initialize repository
-flair init --description "My ML model repo"
+# 1. Authenticate and initialize the repository
+flair auth login
+flair init --name my-model --description "My ML model repo" --framework PyTorch
 
-# 2. Create a new local commit
+# 2. Upload the starting base model (owner or admin access required)
+flair basemodel add model.pt
+
+# 3. Create a local commit, extract parameters, and define the class space
 flair add
-## ✓ New local commit created
-##   Commit hash: a1b2c3d4...
-
-# 3. Extract model parameters
-flair params create
-## ✓ Parameters saved to commit directory
-##   File: params.pt
-
-# 4. Generate zero-knowledge proof
-flair zkp create --input-dims "[1, 3, 224, 224]"
-## ✓ All EZKL steps completed successfully!
-## ✓ ZKP created successfully!
-
-# 5. Finalize and push first commit
-flair commit -m "Initial model commit"
+flair params create --model model.pt --classes cat,dog,bird
+flair metrics set --epoch 1 --accuracy 0.91
+flair zkp create --model model.pt --input-dims "[1, 3, 224, 224]"
+flair commit -m "Initial model update"
 flair push -u origin main
-## ✓ Branch 'main' created
-## ✓ Push complete! Commits pushed: 1/1
 
-# 6. Create multiple commits locally (batch workflow)
-# ... modify model (round 1) ...
+# 4. Repeat add/params/metrics/zkp/commit for compatible sibling updates.
+# Sibling commits must share the same parent and compatible class space.
 flair add
-flair params create
-flair zkp create
-flair commit -m "Improved accuracy to 95%"
+flair params create --model contributor_a.pt --classes cat,dog,bird
+flair zkp create --model contributor_a.pt
+flair commit -m "Contributor A update"
 
-# ... modify model (round 2) ...
 flair add
-flair params create
-flair zkp create
-flair commit -m "Fine-tuned hyperparameters"
+flair params create --model contributor_b.pt --classes cat,dog,bird
+flair zkp create --model contributor_b.pt
+flair commit -m "Contributor B update"
 
-# ... modify model (round 3) ...
+# 5. Inspect mergeable commits and create a local FedAvg candidate
+flair merge list --min-children 2
+flair merge create --min-children 2 --strategy fedavg
+# Candidate output is stored under .flair/.merge_candidates/.
+
+# 6. Formalize the merge candidate as a new checkpoint commit
 flair add
-flair params create
-flair zkp create
-flair commit -m "Added data augmentation"
-
-# 7. Push all commits at once (batch push)
+flair params create --model .flair/.merge_candidates/<candidate_hash>/params.pt --classes cat,dog,bird
+flair zkp create --model .flair/.merge_candidates/<candidate_hash>/params.pt
+flair commit -m "FedAvg merge of contributor updates"
 flair push main
-## Pushing 3 commit(s) serially...
-## ✓ Push complete! Commits pushed: 3/3
 
-# 8. Continue working on next commit (not pushed yet)
-flair add
-flair params create
-# ... still working, not finalized yet ...
+# 7. Inspect or compare the resulting history
+flair log --graph
+flair diff <commitA> <commitB>
 
-# 9. Push again - skips incomplete commit
-flair push main
-## Skipping incomplete commit: abc123...
-## ✓ All commits already pushed. Branch is up to date.
-
-# 10. Revert the latest commit if something went wrong
+# 8. Revert a pushed commit, or reset an unpushed local commit
 flair revert -m "Undo accidental change"
-## ✓ Revert successful!
-## Created compensating checkpoint commit def456...
-
 flair push main
-## Pushing 1 commit(s) serially...
-## ✓ Push complete! Commits pushed: 1/1
-
-# 11. Reset if you decided against the latest local commit
-# (different from revert: revert creates a compensating commit, reset deletes commits)
 flair reset --hard HEAD~1
-## ✓ Reset successful!
-## Deleted 1 unpushed commit(s)
-## HEAD moved to: c3d4e5f6...
-## Working model restored to target state
 
-# 12. Switch branches
+# 9. Continue independent work on another branch
 flair branch experimental
 flair checkout experimental
 flair add
-flair params create
-flair zkp create
+flair params create --model experimental.pt --classes cat,dog,bird
+flair zkp create --model experimental.pt
 flair commit -m "Experimental architecture"
 flair push
 ```
