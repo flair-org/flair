@@ -18,8 +18,11 @@ console = Console()
 def _find_base_model_files() -> list[Path]:
     """Find base model files in current directory."""
     files = []
+    exclude_names = {"config.yaml"}
     for ext in ALLOWED_BASE_MODEL_EXTENSIONS:
-        files.extend(Path.cwd().glob(f"*{ext}"))
+        for p in Path.cwd().glob(f"*{ext}"):
+            if p.is_file() and p.name not in exclude_names:
+                files.append(p)
     return files
 
 
