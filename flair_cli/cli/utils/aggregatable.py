@@ -1,13 +1,14 @@
 """Flower parameters and aggregation metadata used by the local merge node."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from flwr.common import Parameters
+if TYPE_CHECKING:
+    from flwr.common import Parameters
 
 
 @dataclass
 class Aggregatable:
-    parameters: Parameters
+    parameters: "Parameters"
     num_examples: int
     metrics: dict[str, Any] | None = None

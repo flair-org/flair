@@ -23,7 +23,9 @@ from datetime import datetime
 from typing import Optional
 import os
 import asyncio
-import numpy as np
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import numpy as np
 
 # Ensure HOME and EZKL_REPO_PATH are set for EZKL rust bindings, especially on Windows
 if "HOME" not in os.environ:
@@ -294,6 +296,7 @@ def _compute_cid_v1_raw(file_path: Path) -> str:
 
 
 def _make_random_array(dims):
+    import numpy as np
     """Generate a NumPy array of shape dims, float32 in [0,1)."""
     return np.random.rand(*dims).astype(np.float32)
 

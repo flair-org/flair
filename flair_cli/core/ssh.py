@@ -8,9 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 
 @dataclass(frozen=True)
 class SSHSetupMetadata:
@@ -38,6 +35,8 @@ def _compute_fingerprint_from_public_key(public_key_openssh: str) -> str:
 
 
 def generate_ssh_keypair(key_path: Path, passphrase: Optional[str] = None, overwrite: bool = False) -> SSHSetupMetadata:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     """Generate an Ed25519 SSH keypair and write it to disk."""
     if key_path.exists() and not overwrite:
         raise FileExistsError(f"SSH key already exists at {key_path}")

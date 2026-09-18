@@ -6,7 +6,6 @@ Handles conversion of PyTorch and TensorFlow models to ONNX format.
 from pathlib import Path
 from typing import Tuple
 import json
-import numpy as np
 
 
 def detect_input_shape_from_model(model_path: Path, framework: str) -> list:

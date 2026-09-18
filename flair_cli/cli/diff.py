@@ -5,9 +5,11 @@ This module provides comprehensive diff functionality for federated learning,
 and model reproducibility workflows.
 """
 
+from __future__ import annotations
 import json
-from typing import Dict, Any, Tuple, List
-import numpy as np
+from typing import Dict, Any, Tuple, List, TYPE_CHECKING
+if TYPE_CHECKING:
+    import numpy as np
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -80,6 +82,7 @@ def load_commit_params(commit_hash: str) -> Tuple[Dict[str, np.ndarray], Dict[st
 
 
 def flatten_params(params: Dict[str, np.ndarray]) -> np.ndarray:
+    import numpy as np
     """Flatten all parameters into a single vector."""
     flattened = []
     for value in params.values():
@@ -109,6 +112,7 @@ def compute_overall_stats(
     Raises:
         ValueError: If architectures don't match
     """
+    import numpy as np
     if architecture_hash_a != architecture_hash_b:
         return {
             "architecture_compatible": False,
@@ -178,6 +182,7 @@ def compute_layer_stats(
     Returns:
         List of layer statistics, sorted by delta norm descending
     """
+    import numpy as np
     layer_stats = []
     
     for key in sorted(params_a.keys()):

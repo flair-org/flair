@@ -11,20 +11,20 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, List, Tuple, Dict
+from typing import Any, List, Tuple, Dict, TYPE_CHECKING
 from uuid import uuid4
 
-import numpy as np
 import typer
 from rich.console import Console
 
-from flwr.common import ndarrays_to_parameters, parameters_to_ndarrays
-from flwr.server.strategy import FedAvg
-from .utils.async_federated_node import AsyncFederatedNode
 from .utils.local_folder import LocalFolder
 from .utils.aggregatable import Aggregatable
 from .utils.local_commits import _get_all_local_commits, _is_commit_complete
 from .utils.reconstruction import _reconstruct_params_from_checkpoint
+
+if TYPE_CHECKING:
+    import numpy as np
+    from .utils.async_federated_node import AsyncFederatedNode
 
 app = typer.Typer(help="Create lineage-based merge candidates")
 console = Console()
@@ -96,7 +96,8 @@ def _group_compatibility_report(group: list[tuple[dict[str, Any], Path]]) -> tup
     return True, "compatible"
 
 
-def _to_numpy(value: Any) -> np.ndarray:
+def _to_numpy(value: Any) -> "np.ndarray":
+    import numpy as np
     if isinstance(value, np.ndarray):
         return value
 
@@ -106,10 +107,13 @@ def _to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _aggregate_with_flwr_node(models: list[dict[str, np.ndarray]], weights: list[float], temp_dir: Path) -> dict[str, np.ndarray]:
+def _aggregate_with_flwr_node(models: list[dict[str, "np.ndarray"]], weights: list[float], temp_dir: Path) -> dict[str, "np.ndarray"]:
     """
     Uses Flair's standalone local federated node and LocalFolder to perform FedAvg.
     """
+    from flwr.common import ndarrays_to_parameters, parameters_to_ndarrays
+    from flwr.server.strategy import FedAvg
+    from .utils.async_federated_node import AsyncFederatedNode
     if not models:
         raise ValueError("No models supplied for aggregation")
 
@@ -147,7 +151,8 @@ def _aggregate_with_flwr_node(models: list[dict[str, np.ndarray]], weights: list
     return result
 
 
-def _save_aggregated_params(framework: str, params: dict[str, np.ndarray], output_path: Path) -> str:
+def _save_aggregated_params(framework: str, params: dict[str, "np.ndarray"], output_path: Path) -> str:
+    import numpy as np
     if framework == "pytorch":
         try:
             import torch

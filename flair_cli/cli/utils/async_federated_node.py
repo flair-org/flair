@@ -1,11 +1,12 @@
 """Standalone local Flower aggregation node used by the merge command."""
 
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING
 from uuid import uuid4
 
-from flwr.common import Code, FitRes, Parameters, Status
-from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy import Strategy
+if TYPE_CHECKING:
+    from flwr.common import Code, FitRes, Parameters, Status
+    from flwr.server.client_proxy import ClientProxy
+    from flwr.server.strategy import Strategy
 
 from .aggregatable import Aggregatable
 
@@ -16,7 +17,7 @@ class AsyncFederatedNode:
     def __init__(
         self,
         shared_folder,
-        strategy: Strategy,
+        strategy: "Strategy",
         ignore_seen_models: bool = False,
         node_id: str | None = None,
     ):
@@ -28,10 +29,11 @@ class AsyncFederatedNode:
         self.seen_models = set()
 
     def _aggregate(self, aggregatables: List[Aggregatable]) -> Aggregatable:
+        from flwr.common import Code, FitRes, Status
         if not aggregatables:
             raise ValueError("No aggregatables supplied")
 
-        results: List[Tuple[ClientProxy, FitRes]] = [
+        results: List[Tuple["ClientProxy", "FitRes"]] = [
             (
                 None,
                 FitRes(

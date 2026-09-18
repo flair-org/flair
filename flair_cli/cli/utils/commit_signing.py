@@ -8,10 +8,11 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
 
-from paramiko.agent import Agent
-from paramiko.message import Message
+if TYPE_CHECKING:
+    from paramiko.agent import Agent
+    from paramiko.message import Message
 
 
 @dataclass(frozen=True)
@@ -135,20 +136,23 @@ class LocalDiskSSHKey:
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw,
         )
+        from paramiko.message import Message
         msg = Message()
         msg.add_string("ssh-ed25519")
         msg.add_string(raw_pub)
         return msg.asbytes()
 
-    def sign_ssh_data(self, data: bytes) -> Message:
+    def sign_ssh_data(self, data: bytes) -> "Message":
         raw_sig = self._private_key.sign(data)
+        from paramiko.message import Message
         msg = Message()
         msg.add_string("ssh-ed25519")
         msg.add_string(raw_sig)
         return msg
 
 
-def _key_blob_from_ssh_message(message: Message) -> bytes:
+def _key_blob_from_ssh_message(message: "Message") -> bytes:
+    from paramiko.message import Message
     parsed = Message(message.asbytes())
     _ = parsed.get_text()
     return parsed.get_string()
@@ -158,6 +162,7 @@ def load_ssh_agent_identities() -> list[SSHAgentIdentity]:
     """Load all keys currently available through ssh-agent or local default key."""
     identities: list[SSHAgentIdentity] = []
     try:
+        from paramiko.agent import Agent
         agent = Agent()
         for agent_key in agent.get_keys():
             public_blob = agent_key.asbytes()
