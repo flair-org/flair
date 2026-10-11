@@ -113,7 +113,7 @@ class ReconstructionBoundaryTest(unittest.TestCase):
                 "b": np.zeros((2,), dtype=np.float32),
             }
             architecture_b = {
-                "w": np.zeros((3, 2), dtype=np.float32),
+                "w": np.ones((3, 2), dtype=np.float32),
             }
 
             arch_hash_a = compute_architecture_hash(architecture_a, framework="pytorch")

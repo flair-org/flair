@@ -125,7 +125,10 @@ def _is_commit_complete(commit_data: dict, commit_dir: Path) -> bool:
     if not params_file.exists():
         return False
     
-    # Check if ZKP files exist
+    # Check if ZKP files exist (CHECKPOINT commits do not require ZKP)
+    if commit_data.get("commitType") == "CHECKPOINT":
+        return True
+
     zkp_info = commit_data.get("zkp")
     if not zkp_info:
         return False
@@ -138,3 +141,4 @@ def _is_commit_complete(commit_data: dict, commit_dir: Path) -> bool:
         return False
     
     return True
+

@@ -33,7 +33,7 @@ def pull(
         current_session = session.load_session()
         if not current_session:
             console.print("[red]Not authenticated. Run 'flair auth login' first.[/red]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=2)
 
         repo_config = _load_repo_config()
         repo_hash = (
@@ -124,9 +124,15 @@ def pull(
 
         console.print(f"[bold green]✓ Successfully synced {updated_count} commit(s).[/bold green]")
 
+    except typer.Exit:
+        raise
     except httpx.HTTPStatusError as e:
         console.print(f"[red]Error communicating with server: HTTP {e.response.status_code}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=3)
+    except (httpx.RequestError, httpx.ConnectError) as e:
+        console.print(f"[red]Network Error: {e}[/red]")
+        raise typer.Exit(code=3)
     except Exception as e:
         console.print(f"[red]Error during pull: {e}[/red]")
         raise typer.Exit(code=1)
+

@@ -6,6 +6,8 @@ from typing import Callable
 
 def _load_pytorch_params(file_path: Path, warn: Callable[[str], None] | None = None):
     """Load PyTorch parameters from file."""
+    if file_path.suffix.lower() == ".npz":
+        return _load_numpy_params(file_path, warn=warn)
     try:
         import torch
 

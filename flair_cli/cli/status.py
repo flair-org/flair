@@ -24,9 +24,12 @@ def _is_params_present(commit_data: dict, commit_dir: Path) -> bool:
 
 
 def _is_zkp_present(commit_data: dict, commit_dir: Path) -> bool:
+    if commit_data.get("commitType") == "CHECKPOINT":
+        return True
     zkp_info = commit_data.get("zkp")
     if not zkp_info:
         return False
+
 
     proof_file = commit_dir / zkp_info.get("proof_file", "proof.zlib")
     vk_file = commit_dir / zkp_info.get("verification_key_file", "verification_key.zlib")

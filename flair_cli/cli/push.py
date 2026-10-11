@@ -29,10 +29,10 @@ from .utils.local_commits import _is_commit_complete
 
 app = typer.Typer()
 console = Console()
-def _verify_local_commit_chain(commits_to_push: list[tuple]) -> tuple[bool, str]:
+def _verify_local_commit_chain(commits_to_push: list[tuple], remote_head_hash: str | None = None) -> tuple[bool, str]:
     """
     Verify merkle tree chain integrity: each commit's previousCommitHash 
-    must match the previous commit in the chain or be genesis.
+    must match the previous commit in the chain, remote head, or be genesis.
     
     Returns: (is_valid, error_message)
     """
@@ -46,19 +46,32 @@ def _verify_local_commit_chain(commits_to_push: list[tuple]) -> tuple[bool, str]
         previous_hash = commit_data.get("previousCommitHash")
         
         if idx == 0:
-            # First commit should reference genesis or nothing
-            if previous_hash and previous_hash != GENESIS_COMMIT_HASH:
+            # First commit can reference genesis, empty, or remote_head_hash if built on remote
+            valid_parents = {GENESIS_COMMIT_HASH, None, ""}
+            if remote_head_hash:
+                valid_parents.add(remote_head_hash)
+            if previous_hash and previous_hash not in valid_parents:
                 prev_display = str(previous_hash)[:16]
-                return False, f"First commit {commit_hash[:16]}... should reference Genesis but references {prev_display}..."
+                return False, f"First commit {commit_hash[:16]}... should reference Genesis or remote head ({str(remote_head_hash)[:16]}...) but references {prev_display}..."
         else:
             # Subsequent commits should reference the previous commit
             expected_parent = commits_to_push[idx - 1][0].get("commitHash") or ""
             if previous_hash != expected_parent:
-                prev_display = str(previous_hash)[:16] if previous_hash else "None"
-                expected_display = str(expected_parent)[:16] if expected_parent else "None"
-                return False, f"Commit {commit_hash[:16]}... previousCommitHash ({prev_display}...) does not match parent ({expected_display}...)"
+                merged_parents = set(commit_data.get("mergedCommits") or [])
+                metadata_parents = set(commit_data.get("metadata", {}).get("mergeParents") or [])
+                target_parent = commit_data.get("metadata", {}).get("mergeParent")
+                valid_merge_parents = merged_parents | metadata_parents
+                if target_parent:
+                    valid_merge_parents.add(target_parent)
+                if commit_data.get("status") == "MERGER" and (previous_hash in valid_merge_parents or expected_parent in valid_merge_parents):
+                    pass
+                else:
+                    prev_display = str(previous_hash)[:16] if previous_hash else "None"
+                    expected_display = str(expected_parent)[:16] if expected_parent else "None"
+                    return False, f"Commit {commit_hash[:16]}... previousCommitHash ({prev_display}...) does not match parent ({expected_display}...)"
     
     return True, ""
+
 
 
 def _get_remote_latest_commit(repo_hash: str, branch_hash: str) -> str | None:
@@ -301,7 +314,7 @@ def push(
         
         # Verify local commit chain integrity (merkle tree)
         console.print("[dim]Verifying local commit chain integrity...[/dim]")
-        chain_valid, chain_error = _verify_local_commit_chain(commits_to_push)
+        chain_valid, chain_error = _verify_local_commit_chain(commits_to_push, remote_head_hash=remote_head_hash)
         if not chain_valid:
             console.print(f"[red]✗ Chain integrity check failed: {chain_error}[/red]")
             console.print(f"[yellow]Cannot push commits with broken chain. Fix and try again.[/yellow]")
@@ -331,7 +344,7 @@ def push(
 
         if not current_session or not user_principal:
             console.print("[red]Authenticated principal not found. Run 'flair auth login'.[/red]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=2)
 
         wallet_address = user_principal
 
@@ -375,12 +388,12 @@ def push(
             commit_type = commit_data.get("commitType", "CHECKPOINT")
             commit_metrics = commit_data.get("metrics")
 
-            if commit_type == "MERGE":
+            if commit_type == "MERGE" or commit_data.get("status") == "MERGER":
                 allowed, denial_reason = _can_publish_merge_commit(repo_config, target_branch_name, wallet_address)
                 if not allowed:
                     console.print(f"[red]✗ Commit {idx}: {denial_reason}[/red]")
                     console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
-                    raise typer.Exit(code=1)
+                    raise typer.Exit(code=2)
             
             console.print(f"[bold cyan]═══ Commit {idx}/{len(commits_to_push)} ═══[/bold cyan]")
             console.print(f"[dim]Hash: {commit_hash[:16]}...[/dim]")
@@ -396,7 +409,9 @@ def push(
                     console.print(f"[red]✗ Commit {idx}: Delta parameters missing[/red]")
                     console.print(f"[yellow]Stopping push after {pushed_count} successful commit(s).[/yellow]")
                     raise typer.Exit(code=1)
-                params_file = commit_dir / delta_params_info["file"]
+                params_file = commit_dir / ".delta_params" / delta_params_info["file"]
+                if not params_file.exists():
+                    params_file = commit_dir / delta_params_info["file"]
             else:
                 if not params_info or not params_info.get("file"):
                     console.print(f"[red]✗ Commit {idx}: Parameters missing[/red]")
@@ -685,7 +700,10 @@ def push(
         error_detail = e.response.json() if e.response.content else {}
         console.print(f"[red]HTTP Error: {e.response.status_code}[/red]")
         console.print(f"[red]{error_detail.get('error', {}).get('message', str(e))}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=3)
+    except (httpx.RequestError, httpx.ConnectError) as e:
+        console.print(f"[red]Network Error: {str(e)}[/red]")
+        raise typer.Exit(code=3)
     except Exception as e:
         console.print(f"[red]✗ Push failed: {str(e)}[/red]")
         raise typer.Exit(code=1)

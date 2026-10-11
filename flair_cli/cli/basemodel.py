@@ -161,13 +161,9 @@ def upload_base_model(repo_hash: str, file_path: Path, force: bool = False) -> b
     # Check if base model already exists
     exists, existing_url = _check_base_model_exists(repo_hash)
     
-    if exists and not force:
-        console.print("[yellow]⚠ Base model already exists for this repository[/yellow]")
-        console.print(f"[dim]Current URL: {existing_url}[/dim]")
-        replace = typer.confirm("Do you want to replace it?", default=False)
-        if not replace:
-            console.print("[dim]Upload cancelled[/dim]")
-            return False
+    if exists:
+        console.print("[red]Base model already exists. Base models are immutable and cannot be overwritten.[/red]")
+        return False
     
     # Upload the file
     try:
@@ -208,6 +204,10 @@ def add(
     if not repo_hash:
         console.print("[red]Could not determine repository hash[/red]")
         raise typer.Exit(code=1)
+    
+    if not _check_user_authorization(repo_hash):
+        console.print("[red]Permission denied: only repository owner or admin can upload a base model.[/red]")
+        raise typer.Exit(code=2)
     
 
     # Resolve file path
@@ -282,7 +282,13 @@ def delete(
         raise typer.Exit(code=1)
     
     repo_hash = repo.get("hash") or repo.get("repoHash")
-    
+    if not repo_hash:
+        console.print("[red]Could not determine repository hash[/red]")
+        raise typer.Exit(code=1)
+
+    if not _check_user_authorization(repo_hash):
+        console.print("[red]Permission denied: only repository owner or admin can delete a base model.[/red]")
+        raise typer.Exit(code=2)
 
     # Check if model exists
     exists, _ = _check_base_model_exists(repo_hash)

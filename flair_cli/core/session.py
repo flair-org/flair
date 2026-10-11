@@ -13,7 +13,16 @@ import json
 from typing import Optional
 from datetime import datetime, timedelta
 
-SESSION_PATH = Path.home() / ".flair" / "session.json"
+import os
+
+def get_session_path() -> Path:
+    """Resolve session path from FLAIR_CONFIG_DIR / FLAIR_HOME or default ~/.flair/session.json."""
+    env_dir = os.environ.get("FLAIR_CONFIG_DIR") or os.environ.get("FLAIR_HOME")
+    if env_dir:
+        return Path(env_dir) / "session.json"
+    return Path.home() / ".flair" / "session.json"
+
+SESSION_PATH = get_session_path()
 
 class Session(BaseModel):
     token: str
@@ -27,9 +36,10 @@ class Session(BaseModel):
 
 def load_session() -> Optional[Session]:
     """Load session from disk. Returns None if session doesn't exist or is expired."""
-    if SESSION_PATH.exists():
+    session_path = get_session_path()
+    if session_path.exists():
         try:
-            data = json.loads(SESSION_PATH.read_text(encoding="utf-8"))
+            data = json.loads(session_path.read_text(encoding="utf-8"))
             session = Session(**data)
             
             # Check if session has expired
@@ -50,8 +60,9 @@ def load_session() -> Optional[Session]:
 
 def save_session(session: Session):
     """Save session to disk with expiration time."""
-    SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SESSION_PATH.write_text(session.json(), encoding="utf-8")
+    session_path = get_session_path()
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(session.json(), encoding="utf-8")
 
 
 def is_session_valid() -> bool:
@@ -68,5 +79,6 @@ def get_valid_token() -> Optional[str]:
 
 def clear_session():
     """Delete session file."""
-    if SESSION_PATH.exists():
-        SESSION_PATH.unlink()
+    session_path = get_session_path()
+    if session_path.exists():
+        session_path.unlink()

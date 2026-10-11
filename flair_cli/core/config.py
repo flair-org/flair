@@ -32,20 +32,32 @@ class FlairConfig(BaseModel):
     # Session timeout in hours (default 7 days)
     session_timeout_hours: Optional[int] = 168
 
-CONFIG_PATH = Path.home() / ".flair" / "config.yaml"
-CONFIG_DIR = CONFIG_PATH.parent
+def get_config_dir() -> Path:
+    """Resolve config directory from FLAIR_CONFIG_DIR / FLAIR_HOME or ~/.flair."""
+    env_dir = os.environ.get("FLAIR_CONFIG_DIR") or os.environ.get("FLAIR_HOME")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".flair"
+
+def get_config_path() -> Path:
+    """Resolve config file path."""
+    return get_config_dir() / "config.yaml"
+
+CONFIG_PATH = get_config_path()
+CONFIG_DIR = get_config_dir()
 
 
 def load_config() -> FlairConfig:
     """Load config from file, falling back to defaults."""
-    if CONFIG_PATH.exists():
+    config_path = get_config_path()
+    if config_path.exists():
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             return FlairConfig(**data)
         except Exception as e:
             # If config file is malformed, warn and use defaults
-            print(f"Warning: Could not parse {CONFIG_PATH}: {e}. Using defaults.")
+            print(f"Warning: Could not parse {config_path}: {e}. Using defaults.")
             return FlairConfig()
     
     # Auto-generate on first use
@@ -55,23 +67,27 @@ def load_config() -> FlairConfig:
 
 def _generate_default_config():
     """Generate default config file on first use."""
-    if not CONFIG_DIR.exists():
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    config_dir = get_config_dir()
+    config_path = get_config_path()
+    if not config_dir.exists():
+        config_dir.mkdir(parents=True, exist_ok=True)
     
     # Don't overwrite if it already exists
-    if CONFIG_PATH.exists():
+    if config_path.exists():
         return
     
     default_cfg = FlairConfig()
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(default_cfg.model_dump(exclude_none=False), f, default_flow_style=False)
     except Exception as e:
-        print(f"Warning: Could not create {CONFIG_PATH}: {e}")
+        print(f"Warning: Could not create {config_path}: {e}")
 
 
 def save_config(cfg: FlairConfig):
     """Save config to file."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(cfg.model_dump(exclude_none=True), f, default_flow_style=False)
+    config_dir = get_config_dir()
+    config_path = get_config_path()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg.model_dump(exclude_none=True), f, default_flow_style=False)

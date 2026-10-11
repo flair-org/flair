@@ -52,6 +52,9 @@ def _find_last_merge_cursor(commits: list[tuple[dict[str, Any], Path]]) -> str:
     for commit_data, _ in reversed(commits):
         if commit_data.get("commitType") == "CHECKPOINT" and commit_data.get("status") == "MERGER":
             return commit_data.get("commitHash") or "_GENESIS_COMMIT_"
+    for commit_data, _ in reversed(commits):
+        if commit_data.get("commitType") == "CHECKPOINT":
+            return commit_data.get("commitHash") or "_GENESIS_COMMIT_"
     return "_GENESIS_COMMIT_"
 
 
@@ -211,7 +214,7 @@ def create_merge_candidate(
         target_group = None
 
         for parent_hash, group in grouped.items():
-            if parent_hash == cursor:
+            if parent_hash == cursor or cursor == "_GENESIS_COMMIT_":
                 filtered_group = []
                 for item in group:
                     c_hash = item[0].get("commitHash")
@@ -297,6 +300,7 @@ def create_merge_candidate(
             "commitType": "CHECKPOINT",
             "status": "MERGER",
             "message": f"MERGE of {len(parent_hashes)} commits",
+            "previousCommitHash": all_local_commits[-1][0].get("commitHash") if all_local_commits else target_parent,
             "architectureHash": architecture_hash,
             "previousArchitectureHash": architecture_hash,
             "architectureChanged": False,
