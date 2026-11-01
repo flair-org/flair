@@ -6,7 +6,9 @@ Flair CLI is a local-first command-line tool for versioning trained machine lear
 
 ### Requirements
 
-- Python 3.11
+- Python >= 3.11
+- **Windows (Python > 3.11)**: For Python versions greater than 3.11 on Windows, [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) must be installed to compile native C++ extensions (such as `onnx` and `cryptography`).
+  - In the installer, make sure to select the **Desktop development with C++** workload.
 
 ### Install with pip from GitHub
 
@@ -1585,3 +1587,21 @@ Flair utilizes a sophisticated local merging architecture to combine machine lea
 - **Standard Git Workflow**: Instead of a "magic" remote API call, users can inspect their `.merge_candidates/` locally before staging (`flair add`), finalizing (`flair commit`), and uploading the merged commit (`flair push`).
 
 By treating merged models simply as standard commits with `commitType: "MERGER"`, the backend Repository Manager is entirely free from complex merging logic, serving exclusively as a fast, secure storage layer.
+
+## Testing & Quality Assurance
+
+Flair CLI includes a complete automated test suite covering all atomic commands and multi-actor federated learning workflows without external server or network dependencies.
+
+```bash
+# Run the entire test suite
+python -m pytest -v
+
+# Run atomic command contract tests
+python -m pytest -m command -v
+
+# Run multi-actor end-to-end workflow scenarios
+python -m pytest -m workflow -v
+```
+
+For complete documentation on the test harness architecture, mock backend, fixtures, and how to write new tests, see [tests/README.md](tests/README.md).
+
