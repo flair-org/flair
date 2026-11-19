@@ -26,6 +26,23 @@ python -m pip install "git+https://github.com/flair-org/flair.git@v0.1.0"
 
 This installs the declared dependencies and registers the `flair` executable from `flair_cli.main:app`.
 
+For local installation (windows), clone the github repository
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+For local installation (linux),
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+
 ## Table of Contents
 
 - [Installation](#installation)
