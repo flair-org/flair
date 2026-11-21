@@ -158,7 +158,15 @@ flair auth ssh setup --overwrite                                           # Ove
 
 #### Step 2: Activate SSH Agent and Load Key
 
-Use `flair auth ssh env` to generate and run the activation script for your platform in the same shell session.
+Use `flair auth ssh env` to generate the native shell commands that start `ssh-agent` and load your signing key into memory.
+
+**What `flair auth ssh env` does:**
+- **Resolves Key Path**: Targets your Flair private key (default: `C:\Users\<username>\.ssh\id_ed25519_flair` on Windows, `~/.ssh/id_ed25519_flair` on Linux/macOS, or a custom path via `--key-path`).
+- **Generates Native Commands**: Produces the exact shell commands needed for your platform:
+  - *PowerShell*: Configures and starts the Windows `ssh-agent` service, then executes `ssh-add "<key_path>"`.
+  - *Bash/Zsh*: Spawns the agent with `eval "$(ssh-agent -s)"` and runs `ssh-add '<key_path>'`.
+- **Writes or Prints**: If `--output <path>` is provided, writes the snippet to a script for easy dot-sourcing; otherwise prints the commands to stdout.
+- **Zero Credential Custody**: Flair never handles or stores your passphrase in environment variables; `ssh-add` directly prompts you for passphrase entry.
 
 ##### Windows (PowerShell)
 
@@ -171,9 +179,11 @@ C:\Users\<username>\.ssh\id_ed25519_flair
 Generate the PowerShell activation script and dot-source it in your current PowerShell session:
 
 ```powershell
-flair auth ssh env --shell powershell --output ~/.flair/activate-ssh.ps1
+flair auth ssh env --shell powershell --output "$HOME\.flair\activate-ssh.ps1"
 . "$HOME\.flair\activate-ssh.ps1"
 ```
+
+*(This script automatically starts `ssh-agent` and runs `ssh-add "C:\Users\<username>\.ssh\id_ed25519_flair"`)*.
 
 You will be prompted for your SSH key passphrase.
 
@@ -184,7 +194,7 @@ You will be prompted for your SSH key passphrase.
 >    Get-Service ssh-agent | Set-Service -StartupType Automatic
 >    Start-Service ssh-agent
 >    ```
-> 2. Then back in your regular terminal session, load the default key:
+> 2. Then back in your regular terminal session, load the default key directly:
 >    ```powershell
 >    ssh-add "C:\Users\<username>\.ssh\id_ed25519_flair"
 >    ```
