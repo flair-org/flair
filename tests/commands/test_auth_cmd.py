@@ -67,15 +67,28 @@ def test_auth_ssh_env(multi_actor_env, cli_runner):
     os.environ["FLAIR_CONFIG_DIR"] = str(actor_a["config"])
     os.chdir(actor_a["cwd"])
 
+    # Auto-detection (no --shell flag provided)
+    res_auto = cli_runner.invoke(app, ["auth", "ssh", "env"])
+    assert res_auto.exit_code == 0
+    assert "ssh-add" in res_auto.output.lower()
+
+    # Command Prompt (cmd) output
+    res_cmd = cli_runner.invoke(app, ["auth", "ssh", "env", "--shell", "cmd"])
+    assert res_cmd.exit_code == 0
+    assert "net start ssh-agent" in res_cmd.output.lower()
+    assert "ssh-add" in res_cmd.output.lower()
+
     # PowerShell output
     res_ps = cli_runner.invoke(app, ["auth", "ssh", "env", "--shell", "powershell"])
     assert res_ps.exit_code == 0
-    assert "ssh-agent" in res_ps.output.lower() or "ssh-add" in res_ps.output.lower()
+    assert "start-service ssh-agent" in res_ps.output.lower()
+    assert "ssh-add" in res_ps.output.lower()
 
     # Bash output
     res_bash = cli_runner.invoke(app, ["auth", "ssh", "env", "--shell", "bash"])
     assert res_bash.exit_code == 0
-    assert "ssh-agent" in res_bash.output.lower() or "ssh-add" in res_bash.output.lower()
+    assert "eval" in res_bash.output.lower()
+    assert "ssh-add" in res_bash.output.lower()
 
 
 def test_auth_ssh_status(multi_actor_env, mock_ssh_agent, tmp_path, cli_runner):

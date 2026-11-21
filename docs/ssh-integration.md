@@ -92,18 +92,27 @@ If the key does not already exist, Flair generates it and writes the companion p
 
 ### `flair auth ssh env`
 
-Prints a shell snippet for the current shell that starts `ssh-agent` and loads the Flair signing key with `ssh-add`.
+Prints a shell snippet for the current shell that starts `ssh-agent` and loads the Flair signing key with `ssh-add`. When invoked without `--shell`, it automatically detects whether the caller is Command Prompt (CMD), PowerShell, Git Bash, or a POSIX shell.
 
-Typical usage:
+Typical usage for Windows Command Prompt:
 
-```bash
-flair auth ssh env --shell powershell --output ~/.flair/activate-ssh.ps1
+```cmd
+flair auth ssh env --output "C:\Users\<username>\.flair\activate-ssh.cmd"
+call "C:\Users\<username>\.flair\activate-ssh.cmd"
+```
+
+Typical usage for Windows PowerShell:
+
+```powershell
+flair auth ssh env --output "C:\Users\<username>\.flair\activate-ssh.ps1"
+. "C:\Users\<username>\.flair\activate-ssh.ps1"
 ```
 
 For bash-like shells:
 
 ```bash
-flair auth ssh env --shell bash --output ~/.flair/activate-ssh.sh
+flair auth ssh env --output ~/.flair/activate-ssh.sh
+source ~/.flair/activate-ssh.sh
 ```
 
 The generated snippet does not set Flair-specific environment variables. It only prepares the standard SSH agent workflow.

@@ -9,6 +9,7 @@ Session tokens are cached in ~/.flair/session.json with an expiration time (conf
 default 7 days). If a valid session exists, users are not prompted to re-authenticate.
 """
 from __future__ import annotations
+from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -133,7 +134,7 @@ def ssh_setup(
 
 @ssh_app.command("env")
 def ssh_env(
-    shell: str = typer.Option("powershell", "--shell", help="Shell format for the activation snippet"),
+    shell: Optional[str] = typer.Option(None, "--shell", help="Shell format for the activation snippet (powershell, cmd, bash). Auto-detected if omitted."),
     key_path: str = typer.Option(None, "--key-path", help="SSH private key path to activate"),
     output: str = typer.Option(None, "--output", help="Write the activation snippet to a file instead of stdout"),
 ):
@@ -143,18 +144,19 @@ def ssh_env(
     Flair-specific environment variables.
     """
     resolved_key_path = _resolve_ssh_key_path(key_path)
-    snippet = ssh_mod.build_activation_script(shell=shell, key_path=resolved_key_path)
+    active_shell = shell if shell else ssh_mod.detect_shell()
+    snippet = ssh_mod.build_activation_script(shell=active_shell, key_path=resolved_key_path)
 
     if output:
         output_path = Path(output).expanduser()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(snippet + "\n", encoding="utf-8")
         console.print(f"[green]✓ Wrote SSH activation script to {output_path}[/green]")
-        console.print("[dim]Source or dot-source that file in the same shell session to start ssh-agent and load the key.[/dim]")
+        console.print("[dim]Run, source, or dot-source that file in the same shell session to start ssh-agent and load the key.[/dim]")
         return
 
     console.print(snippet)
-    console.print("[dim]Source or dot-source the snippet in the same shell session to start ssh-agent and load the key.[/dim]")
+    console.print("[dim]Run, source, or dot-source the snippet in the same shell session to start ssh-agent and load the key.[/dim]")
 
 
 @ssh_app.command("status")
