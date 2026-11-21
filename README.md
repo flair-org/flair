@@ -46,7 +46,7 @@ pip install -e .
 
 - [Installation](#installation)
 - [Authentication](#authentication)
-   - [SSH Integration](#ssh-setup)
+   - [SSH Setup](#ssh-setup)
 - [Configuration](#configuration)
 - [Repository Commands](#repository-commands)
    - [Create sample model files](#create-sample-model-files)
