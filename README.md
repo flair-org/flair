@@ -46,7 +46,7 @@ pip install -e .
 
 - [Installation](#installation)
 - [Authentication](#authentication)
-   - [SSH Integration](#ssh-integration)
+   - [SSH Integration](#ssh-setup)
 - [Configuration](#configuration)
 - [Repository Commands](#repository-commands)
    - [Create sample model files](#create-sample-model-files)
@@ -135,7 +135,7 @@ flair auth ssh env
 flair auth ssh status
 ```
 
-For complete platform-specific instructions (Command Prompt `.cmd`, PowerShell `.ps1`, Bash `.sh`) and service troubleshooting, see the [SSH Setup Guide](docs/ssh-setup.md). For cryptographic architecture and verification dataflows, see the [SSH Integration Reference](docs/working%20notes/ssh-integration.md).
+For complete platform-specific instructions (Command Prompt `.cmd`, PowerShell `.ps1`, Bash `.sh`) and service troubleshooting, see the [SSH Setup Guide](docs/ssh-setup.md).
 
 ## Configuration
 
