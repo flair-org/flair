@@ -42,17 +42,12 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
-
 ## Table of Contents
 
 - [Installation](#installation)
 - [Authentication](#authentication)
    - [SSH Integration](#ssh-integration)
 - [Configuration](#configuration)
-- [Status Command](#status-command)
-- [Log Command](#log-command)
-- [Diff Command](#diff-command)
-- [Metrics Command](#metrics-command)
 - [Repository Commands](#repository-commands)
    - [Create sample model files](#create-sample-model-files)
    - [Init repository with automatic base model detection](#init-repository-with-automatic-base-model-detection)
@@ -66,24 +61,30 @@ pip install -e .
    - [Check if base model exists](#check-if-base-model-exists)
    - [Delete base model](#delete-base-model-admin-command)
    - [Download base model](#download-base-model)
+- [Commit Workflow](#commit-workflow)
+   - [Create a new local commit](#create-a-new-local-commit)
+   - [Create model params](#create-model-params)
+   - [Metrics Command](#metrics-command)
+   - [Zero-Knowledge Proofs (ZKP)](#zero-knowledge-proofs-zkp)
+   - [Finalize commit with message](#finalize-commit-with-message)
+- [Push Commits](#push-commits)
+- [Pull Commits](#pull-commits)
+- [Status Command](#status-command)
+- [Merge Commits](#merge-commits)
+- [Local Merging Architecture (Shared Folder)](#local-merging-architecture-shared-folder)
+- [Log Command](#log-command)
+- [Diff Command](#diff-command)
+- [Revert Commits](#revert-commits)
+- [Reset Commits](#reset-commits)
 - [Branch Functions](#branch-functions)
    - [Create a new branch](#create-a-new-branch)
    - [List all branches](#list-all-branches)
    - [Delete a branch](#delete-a-branch)
    - [Switch branches](#switch-branches)
-- [Commit Workflow](#commit-workflow)
-   - [Create a new local commit](#create-a-new-local-commit)
-   - [Create model params](#create-model-params)
-   - [Zero-Knowledge Proofs (ZKP)](#zero-knowledge-proofs-zkp)
-   - [Finalize commit with message](#finalize-commit-with-message)
-- [Pull Commits](#pull-commits)
-- [Push Commits](#push-commits)
-- [Merge Commits](#merge-commits)
-- [Revert Commits](#revert-commits)
-- [Reset Commits](#reset-commits)
 - [Directory structure (CLI)](#directory-structure-cli)
 - [Complete Workflow Example](#complete-workflow-example)
 - [Validation Rules](#validation-rules)
+- [Testing & Quality Assurance](#testing--quality-assurance)
 
 ## Authentication
 
@@ -198,279 +199,6 @@ flair config reset
 ```
 
 The reset command preserves the authentication session and repository data. It does not delete `session.json`, SSH keys, or project `.flair` directories.
-
-## Status Command
-
-Use `flair status` to quickly inspect local repository state and sync progress.
-
-It reports:
-- Current branch
-- Current HEAD
-- Current local commit
-- Whether there is an unfinished local commit
-- Whether params / ZKP / message are present for the latest local commit
-- Number of unpushed commits
-
-```bash
-flair status
-## Branch: main
-## HEAD: a1b2c3d4...
-## Current local commit: z9y8x7w6...
-## Unfinished local commit: yes
-## Params: ✓
-## ZKP: ✗
-## Message: ✗
-## Unpushed commits: 2
-```
-
-Notes:
-- `Unfinished local commit` is `yes` when the latest local commit is missing params, ZKP, message, or commit type.
-- `Unpushed commits` counts complete local commits that are not yet part of the remote branch head.
-
-## Log Command
-
-Use `flair log` to view readable commit history (newest first).
-
-```bash
-flair log
-## d4e5f6g7... Fine-tuned hyperparameters
-## c3d4e5f6... Improved accuracy to 95%
-## b2c3d4e5... Updated with training data v2
-## a1b2c3d4... Initial model commit
-```
-
-Optional flags:
-
-```bash
-flair log --graph
-flair log --branch experimental
-flair log --limit 10
-```
-
-Notes:
-- `--graph` adds a simple graph-style prefix to each entry.
-- `--branch` targets a specific branch head when available.
-- `--limit` controls the maximum number of commits printed (default: 50).
-
-## Diff Command
-
-Use `flair diff` to semantically compare two model commits. This command is designed for federated learning and model reproducibility validation.
-
-The diff is **semantic**, not raw tensors. It focuses on understanding how the model changed, not exact numerical values.
-
-### Basic Usage
-
-Compare two commits and get an overview:
-
-```bash
-flair diff 9f2c... b71e...
-## Commit A: 9f2c...
-## Commit B: b71e...
-## 
-## Architecture: unchanged
-## Parameters changed: 12.4M / 14.1M (87.9%)
-## 
-## Overall Change
-## ┌─────────────────────────────────────────────┐
-## │ Mean parameter delta norm: 0.021            │
-## │ Max parameter delta norm: 0.184             │
-## │ Cosine similarity between models: 0.992     │
-## └─────────────────────────────────────────────┘
-## 
-## Largest layer changes:
-##   classifier.fc3.weight Δ norm: 0.184 (100.0% changed)
-##   classifier.fc3.bias Δ norm: 0.071 (55.2% changed)
-##   encoder.layer4.weight Δ norm: 0.053 (38.1% changed)
-##   encoder.layer4.bias Δ norm: 0.028 (22.0% changed)
-##   encoder.layer3.weight Δ norm: 0.019 (15.3% changed)
-##
-## Federated Merge Readiness
-##   Architecture compatible: ✓
-##   Parameter dimensions compatible: ✓
-##   Class space compatible: ✓
-##   Update magnitude: moderate
-##   Recommended merge weight: 0.18
-```
-
-Notes:
-- The diff output only shows metadata fields that are actually stored in both commits.
-- Training-only values such as `epochs`, `learning_rate`, and `accuracy` are not shown unless they are explicitly stored in a structured `metrics` object.
-
-### Detailed Mode
-
-Show all changed layers, not just the top 5:
-
-```bash
-flair diff <commitA> <commitB> --detailed
-```
-
-This produces a full table with all layers:
-
-```
-Layer Statistics
-┌──────────────────────────────┬───────────┬──────────┬────────────┬──────────────┐
-│ Layer                        │ Shape     │ Δ Norm   │ % Changed  │ Max │Δ│      │
-├──────────────────────────────┼───────────┼──────────┼────────────┼──────────────┤
-│ classifier.fc3.weight        │ 10x512    │ 0.184234 │ 100.00%    │ 0.024582     │
-│ classifier.fc3.bias          │ 10        │ 0.071456 │ 55.20%     │ 0.018934     │
-│ encoder.layer4.weight        │ 128x256   │ 0.053189 │ 38.10%     │ 0.012745     │
-│ encoder.layer4.bias          │ 128       │ 0.028456 │ 22.00%     │ 0.008921     │
-│ encoder.layer3.weight        │ 128x128   │ 0.019234 │ 15.30%     │ 0.005678     │
-└──────────────────────────────┴───────────┴──────────┴────────────┴──────────────┘
-```
-
-### JSON Output
-
-For programmatic consumption, use `--json`:
-
-```bash
-flair diff <commitA> <commitB> --json
-```
-
-Returns a machine-readable JSON object with structure:
-
-```json
-{
-  "commitA": "9f2c...",
-  "commitB": "b71e...",
-  "architectureCompatible": true,
-  "overall": {
-    "total_parameters": 14768384,
-    "changed_parameters": 12957568,
-    "percent_changed": 87.8,
-    "mean_delta_norm": 0.021342,
-    "max_delta_norm": 0.184234,
-    "cosine_similarity": 0.9924
-  },
-  "layers": [
-    {
-      "name": "classifier.fc3.weight",
-      "shape": [10, 512],
-      "delta_norm": 0.184234,
-      "percent_changed": 100.0,
-      "max_abs_difference": 0.024582
-    }
-  ],
-   "metadataChanges": {
-      "contributor": { "old": "Rahul", "new": "Raj" },
-      "notes": { "old": "baseline run", "new": "added augmentation" }
-   },
-   "metricChanges": {
-      "validation_loss": { "old": 0.42, "new": 0.31 },
-      "f1_score": { "old": 0.91, "new": 0.94 }
-   },
-  "mergeReadiness": {
-    "architecture_compatible": true,
-    "parameter_dimensions_compatible": true,
-    "merge_possible": true,
-    "update_magnitude": "moderate",
-    "recommended_merge_weight": 0.18
-  }
-}
-```
-
-### What the Diff Computes
-
-**Architecture Validation**
-
-If the two commits have different `architectureHash` values, the diff terminates with an error:
-
-```
-Cannot diff commits with different model architectures.
-  Architecture Hash A: a1b2c3d4...
-  Architecture Hash B: x9y8z7w6...
-```
-
-**Overall Statistics**
-
-- **Total parameters**: Count of all model weights and biases
-- **Changed parameters**: Number of elements where values differ
-- **Percent changed**: Percentage of total parameters that changed
-- **Mean delta norm**: Average L2 norm of per-parameter deltas
-- **Max delta norm**: Largest L2 norm across all parameters
-- **Cosine similarity**: Similarity between full flattened parameter vectors (1.0 = identical, 0.0 = orthogonal)
-
-**Per-Layer Statistics**
-
-For each parameter/layer:
-- **Δ Norm**: L2 norm of the difference tensor
-- **Percent Changed**: Percentage of non-zero deltas in this layer
-- **Max |Δ|**: Maximum absolute value of any single change
-
-Results are sorted by delta norm (descending) to highlight the most-changed layers first.
-
-**Metadata Comparison**
-
-If commits have different non-internal metadata fields that are present in both commits, they're listed. Training-only values like `epochs`, `learning_rate`, and top-level `accuracy` are intentionally omitted unless stored under a structured `metrics` object:
-
-```
-Metadata changes:
-   contributor: Alice -> Raj
-   notes: baseline -> fine-tuned with augmentation
-```
-
-**Metric Comparison**
-
-If both commits store a structured `metrics` object, matching metric keys are highlighted:
-
-```
-Metrics:
-  validation_loss: 0.42 -> 0.31 ↓
-   f1_score: 0.91 -> 0.94 ↑
-```
-
-If no `metrics` object exists in commit metadata, this section is omitted.
-When present, metric values are sourced from each commit's stored `metrics` object (for example, values staged with `flair metrics set` and captured during `flair commit`).
-
-## Metrics Command
-
-Use `flair metrics` to stage metrics in `.flair/metrics.json`.
-
-Supported options for `flair metrics set`:
-- `--epoch`
-- `--accuracy`
-- `--val-loss`
-- `--train-loss`
-- `--precision`
-- `--recall`
-- `--f1`
-- `--learning-rate`
-- `--notes`
-
-```bash
-flair metrics set --epoch 15 --accuracy 0.935 --val-loss 0.31
-flair metrics import
-flair metrics import --source ./mlruns --run-id <run_id>
-flair metrics show
-flair metrics reset
-```
-
-Behavior:
-- Staging file is always `.flair/metrics.json`
-- `set` merges provided fields and updates `updatedAt`
-- `import` scans MLflow logs (default `./mlruns`), imports the latest run metrics, and merges into staged metrics
-- `show` prints current staged metrics
-- `reset` deletes staged metrics
-- `flair commit` copies staged metrics into commit metadata under `metrics` and then clears `.flair/metrics.json`
-
-**Federated Merge Readiness**
-
-This section is designed for federated learning workflows:
-
-- **Architecture compatible**: ✓ if `architectureHash` matches
-- **Parameter dimensions compatible**: ✓ if all shapes match
-- **Class space compatible**: ✓ only when every contributor trains against the same fixed label set and output layer size
-- **Update magnitude**: `small` (mean delta < 0.01), `moderate` (0.01–0.1), or `large` (> 0.1)
-- **Recommended merge weight**: Heuristic weight (0–1) for how much to blend this update into the global model, based on cosine similarity and magnitude
-
-Important limitation:
-- Flair cannot safely merge models trained on different classes if that changes the output layer or label space.
-- If contributors train with different class sets, treat those commits as separate lineages and start a new CHECKPOINT or branch.
-
-Example interpretation:
-- A `small` update with high similarity (0.99+) → blend weight ~0.15
-- A `moderate` update with good similarity (0.95+) → blend weight ~0.18
-- A `large` update with lower similarity (< 0.9) → blend weight ~0.12
 
 ## Repository Commands
 
@@ -639,38 +367,6 @@ flair basemodel download --target-dir ./models
 ## ✓ Download complete
 ```
 
-## Branch Functions
-
-### create a new branch
-```bash
-flair branch new-feature  # Create new branch from current
-## ✓ Branch 'new-feature' created from current
-```
-
-### list all branches
-```bash
-flair branch              # List all branches
-## Branches:
-## * main
-##   new-feature
-```
-
-### delete a branch
-```bash
-flair branch -d old-branch  # Delete a branch
-## ✓ Branch 'old-branch' deleted
-```
-
-
-### switch branches
-```bash
-flair checkout main              # Uses cache if available, downloads otherwise
-flair checkout feature --no-cache # Force fresh download from API
-## Caching artifacts for 'main'...
-## ✓ Restored artifacts from cache
-## ✓ Switched to branch 'feature'
-```
-
 ## Commit Workflow
 
 ### Create a new local commit
@@ -760,6 +456,37 @@ Full parameters are automatically managed by the `flair commit` command:
 This strategy provides significant storage savings (95%+ for large commit histories) while maintaining data integrity.
 
 **Note:** You cannot overwrite existing params. To create new params, run `flair add` to create a new commit first.
+
+## Metrics Command
+
+Use `flair metrics` to stage metrics in `.flair/metrics.json`.
+
+Supported options for `flair metrics set`:
+- `--epoch`
+- `--accuracy`
+- `--val-loss`
+- `--train-loss`
+- `--precision`
+- `--recall`
+- `--f1`
+- `--learning-rate`
+- `--notes`
+
+```bash
+flair metrics set --epoch 15 --accuracy 0.935 --val-loss 0.31
+flair metrics import
+flair metrics import --source ./mlruns --run-id <run_id>
+flair metrics show
+flair metrics reset
+```
+
+Behavior:
+- Staging file is always `.flair/metrics.json`
+- `set` merges provided fields and updates `updatedAt`
+- `import` scans MLflow logs (default `./mlruns`), imports the latest run metrics, and merges into staged metrics
+- `show` prints current staged metrics
+- `reset` deletes staged metrics
+- `flair commit` copies staged metrics into commit metadata under `metrics` and then clears `.flair/metrics.json`
 
 ## Zero-Knowledge Proofs (ZKP)
 
@@ -1150,6 +877,34 @@ flair pull main                     # Pull statuses for the 'main' branch
 flair pull feature-branch -u origin # Specify upstream (optional)
 ```
 
+## Status Command
+
+Use `flair status` to quickly inspect local repository state and sync progress.
+
+It reports:
+- Current branch
+- Current HEAD
+- Current local commit
+- Whether there is an unfinished local commit
+- Whether params / ZKP / message are present for the latest local commit
+- Number of unpushed commits
+
+```bash
+flair status
+## Branch: main
+## HEAD: a1b2c3d4...
+## Current local commit: z9y8x7w6...
+## Unfinished local commit: yes
+## Params: ✓
+## ZKP: ✗
+## Message: ✗
+## Unpushed commits: 2
+```
+
+Notes:
+- `Unfinished local commit` is `yes` when the latest local commit is missing params, ZKP, message, or commit type.
+- `Unpushed commits` counts complete local commits that are not yet part of the remote branch head.
+
 ## Merge Commits
 
 Flair allows you to aggregate sibling commits (commits sharing the same parent and architecture) into a single merged model using Federated Averaging (FedAvg).
@@ -1193,6 +948,241 @@ flair merge list --min-children 2
 **Options:**
 - `--min-children`: Minimum sibling commits required to aggregate (default: 2).
 - `--since-commit`: Optional override cursor hash to begin searching for siblings.
+
+## Local Merging Architecture (Shared Folder)
+
+Flair utilizes a sophisticated local merging architecture to combine machine learning models from distributed contributors. Instead of performing heavy mathematical aggregations on a central server, Flair decentralizes the merging process to the user's local machine using a "Git-like" philosophy.
+
+### How It Works
+
+1. **Local Folder Strategy (`flwr_serverless`)**: When a user runs `flair merge create`, the CLI initializes a temporary `LocalFolder` acting as a localized shared directory.
+2. **Sibling Commit Discovery**: The CLI scans the local repository for sibling commits (commits sharing the same parent and architecture).
+3. **AsyncFederatedNode Integration**: The parameters of the eligible sibling commits are parsed and injected as `Aggregatable` objects into a `flwr_serverless` `AsyncFederatedNode`.
+4. **Federated Averaging (FedAvg)**: The node performs a synchronous `FedAvg` operation, combining the weights mathematically based on the number of training examples in each sibling commit.
+5. **Artifact Generation**: The resulting global model is extracted and saved as a merge candidate in the `.flair/.merge_candidates/` directory.
+
+### Why Local Merging?
+
+- **True Decentralization**: Offloads the immense compute and RAM requirements of aggregating large neural networks from the central Repository Manager to the client edges.
+- **Scalability**: By bypassing the backend for the aggregation math, the system scales naturally without crashing the central API under heavy synchronous load.
+- **Fault Tolerance & Safety**: Merges are sandboxed on the local machine. Network drops during a merge do not result in orphaned states on the server.
+- **Standard Git Workflow**: Instead of a "magic" remote API call, users can inspect their `.merge_candidates/` locally before staging (`flair add`), finalizing (`flair commit`), and uploading the merged commit (`flair push`).
+
+By treating merged models simply as standard commits with `commitType: "MERGER"`, the backend Repository Manager is entirely free from complex merging logic, serving exclusively as a fast, secure storage layer.
+
+## Log Command
+
+Use `flair log` to view readable commit history (newest first).
+
+```bash
+flair log
+## d4e5f6g7... Fine-tuned hyperparameters
+## c3d4e5f6... Improved accuracy to 95%
+## b2c3d4e5... Updated with training data v2
+## a1b2c3d4... Initial model commit
+```
+
+Optional flags:
+
+```bash
+flair log --graph
+flair log --branch experimental
+flair log --limit 10
+```
+
+Notes:
+- `--graph` adds a simple graph-style prefix to each entry.
+- `--branch` targets a specific branch head when available.
+- `--limit` controls the maximum number of commits printed (default: 50).
+
+## Diff Command
+
+Use `flair diff` to semantically compare two model commits. This command is designed for federated learning and model reproducibility validation.
+
+The diff is **semantic**, not raw tensors. It focuses on understanding how the model changed, not exact numerical values.
+
+### Basic Usage
+
+Compare two commits and get an overview:
+
+```bash
+flair diff 9f2c... b71e...
+## Commit A: 9f2c...
+## Commit B: b71e...
+## 
+## Architecture: unchanged
+## Parameters changed: 12.4M / 14.1M (87.9%)
+## 
+## Overall Change
+## ┌─────────────────────────────────────────────┐
+## │ Mean parameter delta norm: 0.021            │
+## │ Max parameter delta norm: 0.184             │
+## │ Cosine similarity between models: 0.992     │
+## └─────────────────────────────────────────────┘
+## 
+## Largest layer changes:
+##   classifier.fc3.weight Δ norm: 0.184 (100.0% changed)
+##   classifier.fc3.bias Δ norm: 0.071 (55.2% changed)
+##   encoder.layer4.weight Δ norm: 0.053 (38.1% changed)
+##   encoder.layer4.bias Δ norm: 0.028 (22.0% changed)
+##   encoder.layer3.weight Δ norm: 0.019 (15.3% changed)
+##
+## Federated Merge Readiness
+##   Architecture compatible: ✓
+##   Parameter dimensions compatible: ✓
+##   Class space compatible: ✓
+##   Update magnitude: moderate
+##   Recommended merge weight: 0.18
+```
+
+Notes:
+- The diff output only shows metadata fields that are actually stored in both commits.
+- Training-only values such as `epochs`, `learning_rate`, and `accuracy` are not shown unless they are explicitly stored in a structured `metrics` object.
+
+### Detailed Mode
+
+Show all changed layers, not just the top 5:
+
+```bash
+flair diff <commitA> <commitB> --detailed
+```
+
+This produces a full table with all layers:
+
+```
+Layer Statistics
+┌──────────────────────────────┬───────────┬──────────┬────────────┬──────────────┐
+│ Layer                        │ Shape     │ Δ Norm   │ % Changed  │ Max │Δ│      │
+├──────────────────────────────┼───────────┼──────────┼────────────┼──────────────┤
+│ classifier.fc3.weight        │ 10x512    │ 0.184234 │ 100.00%    │ 0.024582     │
+│ classifier.fc3.bias          │ 10        │ 0.071456 │ 55.20%     │ 0.018934     │
+│ encoder.layer4.weight        │ 128x256   │ 0.053189 │ 38.10%     │ 0.012745     │
+│ encoder.layer4.bias          │ 128       │ 0.028456 │ 22.00%     │ 0.008921     │
+│ encoder.layer3.weight        │ 128x128   │ 0.019234 │ 15.30%     │ 0.005678     │
+└──────────────────────────────┴───────────┴──────────┴────────────┴──────────────┘
+```
+
+### JSON Output
+
+For programmatic consumption, use `--json`:
+
+```bash
+flair diff <commitA> <commitB> --json
+```
+
+Returns a machine-readable JSON object with structure:
+
+```json
+{
+  "commitA": "9f2c...",
+  "commitB": "b71e...",
+  "architectureCompatible": true,
+  "overall": {
+    "total_parameters": 14768384,
+    "changed_parameters": 12957568,
+    "percent_changed": 87.8,
+    "mean_delta_norm": 0.021342,
+    "max_delta_norm": 0.184234,
+    "cosine_similarity": 0.9924
+  },
+  "layers": [
+    {
+      "name": "classifier.fc3.weight",
+      "shape": [10, 512],
+      "delta_norm": 0.184234,
+      "percent_changed": 100.0,
+      "max_abs_difference": 0.024582
+    }
+  ],
+   "metadataChanges": {
+      "contributor": { "old": "Rahul", "new": "Raj" },
+      "notes": { "old": "baseline run", "new": "added augmentation" }
+   },
+   "metricChanges": {
+      "validation_loss": { "old": 0.42, "new": 0.31 },
+      "f1_score": { "old": 0.91, "new": 0.94 }
+   },
+  "mergeReadiness": {
+    "architecture_compatible": true,
+    "parameter_dimensions_compatible": true,
+    "merge_possible": true,
+    "update_magnitude": "moderate",
+    "recommended_merge_weight": 0.18
+  }
+}
+```
+
+### What the Diff Computes
+
+**Architecture Validation**
+
+If the two commits have different `architectureHash` values, the diff terminates with an error:
+
+```
+Cannot diff commits with different model architectures.
+  Architecture Hash A: a1b2c3d4...
+  Architecture Hash B: x9y8z7w6...
+```
+
+**Overall Statistics**
+
+- **Total parameters**: Count of all model weights and biases
+- **Changed parameters**: Number of elements where values differ
+- **Percent changed**: Percentage of total parameters that changed
+- **Mean delta norm**: Average L2 norm of per-parameter deltas
+- **Max delta norm**: Largest L2 norm across all parameters
+- **Cosine similarity**: Similarity between full flattened parameter vectors (1.0 = identical, 0.0 = orthogonal)
+
+**Per-Layer Statistics**
+
+For each parameter/layer:
+- **Δ Norm**: L2 norm of the difference tensor
+- **Percent Changed**: Percentage of non-zero deltas in this layer
+- **Max |Δ|**: Maximum absolute value of any single change
+
+Results are sorted by delta norm (descending) to highlight the most-changed layers first.
+
+**Metadata Comparison**
+
+If commits have different non-internal metadata fields that are present in both commits, they're listed. Training-only values like `epochs`, `learning_rate`, and top-level `accuracy` are intentionally omitted unless stored under a structured `metrics` object:
+
+```
+Metadata changes:
+   contributor: Alice -> Raj
+   notes: baseline -> fine-tuned with augmentation
+```
+
+**Metric Comparison**
+
+If both commits store a structured `metrics` object, matching metric keys are highlighted:
+
+```
+Metrics:
+  validation_loss: 0.42 -> 0.31 ↓
+   f1_score: 0.91 -> 0.94 ↑
+```
+
+If no `metrics` object exists in commit metadata, this section is omitted.
+When present, metric values are sourced from each commit's stored `metrics` object (for example, values staged with `flair metrics set` and captured during `flair commit`).
+
+**Federated Merge Readiness**
+
+This section is designed for federated learning workflows:
+
+- **Architecture compatible**: ✓ if `architectureHash` matches
+- **Parameter dimensions compatible**: ✓ if all shapes match
+- **Class space compatible**: ✓ only when every contributor trains against the same fixed label set and output layer size
+- **Update magnitude**: `small` (mean delta < 0.01), `moderate` (0.01–0.1), or `large` (> 0.1)
+- **Recommended merge weight**: Heuristic weight (0–1) for how much to blend this update into the global model, based on cosine similarity and magnitude
+
+Important limitation:
+- Flair cannot safely merge models trained on different classes if that changes the output layer or label space.
+- If contributors train with different class sets, treat those commits as separate lineages and start a new CHECKPOINT or branch.
+
+Example interpretation:
+- A `small` update with high similarity (0.99+) → blend weight ~0.15
+- A `moderate` update with good similarity (0.95+) → blend weight ~0.18
+- A `large` update with lower similarity (< 0.9) → blend weight ~0.12
 
 ## Revert Commits
 
@@ -1397,6 +1387,38 @@ flair reset --hard HEAD~1
 - REMOTE_HEAD remains unchanged
 - Deleted commits can be recreated if needed
 
+## Branch Functions
+
+### create a new branch
+```bash
+flair branch new-feature  # Create new branch from current
+## ✓ Branch 'new-feature' created from current
+```
+
+### list all branches
+```bash
+flair branch              # List all branches
+## Branches:
+## * main
+##   new-feature
+```
+
+### delete a branch
+```bash
+flair branch -d old-branch  # Delete a branch
+## ✓ Branch 'old-branch' deleted
+```
+
+
+### switch branches
+```bash
+flair checkout main              # Uses cache if available, downloads otherwise
+flair checkout feature --no-cache # Force fresh download from API
+## Caching artifacts for 'main'...
+## ✓ Restored artifacts from cache
+## ✓ Switched to branch 'feature'
+```
+
 ## Directory structure (CLI)
 
 Here is the complete overview of the `.flair` directory structure:
@@ -1583,27 +1605,6 @@ The CLI enforces a strict sequential workflow to prevent incomplete commits:
    - Merge-style delta application across differing architectures is rejected
 
 This ensures every commit is complete and prevents accidental overwrites.
-
-## Local Merging Architecture (Shared Folder)
-
-Flair utilizes a sophisticated local merging architecture to combine machine learning models from distributed contributors. Instead of performing heavy mathematical aggregations on a central server, Flair decentralizes the merging process to the user's local machine using a "Git-like" philosophy.
-
-### How It Works
-
-1. **Local Folder Strategy (`flwr_serverless`)**: When a user runs `flair merge create`, the CLI initializes a temporary `LocalFolder` acting as a localized shared directory.
-2. **Sibling Commit Discovery**: The CLI scans the local repository for sibling commits (commits sharing the same parent and architecture).
-3. **AsyncFederatedNode Integration**: The parameters of the eligible sibling commits are parsed and injected as `Aggregatable` objects into a `flwr_serverless` `AsyncFederatedNode`.
-4. **Federated Averaging (FedAvg)**: The node performs a synchronous `FedAvg` operation, combining the weights mathematically based on the number of training examples in each sibling commit.
-5. **Artifact Generation**: The resulting global model is extracted and saved as a merge candidate in the `.flair/.merge_candidates/` directory.
-
-### Why Local Merging?
-
-- **True Decentralization**: Offloads the immense compute and RAM requirements of aggregating large neural networks from the central Repository Manager to the client edges.
-- **Scalability**: By bypassing the backend for the aggregation math, the system scales naturally without crashing the central API under heavy synchronous load.
-- **Fault Tolerance & Safety**: Merges are sandboxed on the local machine. Network drops during a merge do not result in orphaned states on the server.
-- **Standard Git Workflow**: Instead of a "magic" remote API call, users can inspect their `.merge_candidates/` locally before staging (`flair add`), finalizing (`flair commit`), and uploading the merged commit (`flair push`).
-
-By treating merged models simply as standard commits with `commitType: "MERGER"`, the backend Repository Manager is entirely free from complex merging logic, serving exclusively as a fast, secure storage layer.
 
 ## Testing & Quality Assurance
 
