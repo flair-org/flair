@@ -128,7 +128,7 @@ Flair can sign commits with a dedicated SSH Ed25519 key using the standard `ssh-
 
 Prerequisite: Run `flair auth login` first so the backend can associate the public key with your account.
 
-Generate a dedicated Flair signing key (default: `~/.ssh/id_ed25519_flair`) and register its public key with the backend:
+Generate a dedicated Flair signing key (default on Windows: `C:\Users\<username>\.ssh\id_ed25519_flair`, on Linux/macOS: `~/.ssh/id_ed25519_flair`) and register its public key with the backend:
 
 ```bash
 flair auth ssh setup
@@ -150,9 +150,10 @@ Next: run flair auth ssh env to get ssh-agent activation instructions.
 Useful setup options include:
 
 ```bash
-flair auth ssh setup --key-path ~/.ssh/id_ed25519_flair  # Custom key path
-flair auth ssh setup --no-passphrase                   # Skip passphrase protection
-flair auth ssh setup --overwrite                       # Overwrite existing key
+flair auth ssh setup --key-path "C:\Users\<username>\.ssh\id_ed25519_flair"  # Custom key path (Windows)
+flair auth ssh setup --key-path ~/.ssh/id_ed25519_flair                      # Custom key path (Linux/macOS)
+flair auth ssh setup --no-passphrase                                       # Skip passphrase protection
+flair auth ssh setup --overwrite                                           # Overwrite existing key
 ```
 
 #### Step 2: Activate SSH Agent and Load Key
@@ -161,7 +162,13 @@ Use `flair auth ssh env` to generate and run the activation script for your plat
 
 ##### Windows (PowerShell)
 
-Generate the PowerShell activation script and dot-source it:
+On Windows, the default Flair SSH signing key is located at:
+
+```text
+C:\Users\<username>\.ssh\id_ed25519_flair
+```
+
+Generate the PowerShell activation script and dot-source it in your current PowerShell session:
 
 ```powershell
 flair auth ssh env --shell powershell --output ~/.flair/activate-ssh.ps1
@@ -177,10 +184,11 @@ You will be prompted for your SSH key passphrase.
 >    Get-Service ssh-agent | Set-Service -StartupType Automatic
 >    Start-Service ssh-agent
 >    ```
-> 2. Then back in your regular terminal session, load the key:
+> 2. Then back in your regular terminal session, load the default key:
 >    ```powershell
->    ssh-add "$HOME\.ssh\id_ed25519_flair"
+>    ssh-add "C:\Users\<username>\.ssh\id_ed25519_flair"
 >    ```
+>    *(or using `$HOME`: `ssh-add "$HOME\.ssh\id_ed25519_flair"`)*
 
 ##### Linux / macOS (Bash / Zsh)
 
