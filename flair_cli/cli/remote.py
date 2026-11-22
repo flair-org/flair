@@ -12,6 +12,7 @@ import httpx
 
 from ..api import client as api_client
 from ..api.utils import _base_url
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer(help="Manage remote repository connections")
 console = Console()
@@ -37,15 +38,10 @@ def add_remote(
         clone_data = api_client.clone_repository(repo_hash)
         repo_info = clone_data.get("repo", {})
         branches = clone_data.get("branches", [])
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 401:
-            console.print("[yellow]Authentication required. Run 'flair auth login' to sign in with your wallet before connecting to a remote repository.[/yellow]")
-        else:
-            console.print(f"[red]Error contacting remote: HTTP {e.response.status_code}[/red]")
-        raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Failed to fetch repository details: {e}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Remote connection", endpoint="/repo/hash/clone")
 
     if not repo_info:
         console.print(f"[red]Repository '{repo_hash}' not found on remote.[/red]")

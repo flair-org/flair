@@ -11,6 +11,7 @@ import re
 import httpx
 
 from ..api import client as api_client
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
 console = Console()
@@ -224,6 +225,7 @@ def clone(
         console.print(f"  cd {local_dir}")
         console.print(f"  flair status")
         
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"Failed to clone repository: {e}", style="bold red")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Repository clone", endpoint="/repo/hash/clone")

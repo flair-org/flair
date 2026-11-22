@@ -8,6 +8,7 @@ from ..api import client as api_client
 from ..api.utils import _base_url, _client_with_auth
 from ..core import session
 from .utils.local_commits import _get_all_local_commits, _get_flair_dir, _get_head_info
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer(help="Pull latest commit statuses from remote")
 console = Console()
@@ -126,13 +127,8 @@ def pull(
 
     except typer.Exit:
         raise
-    except httpx.HTTPStatusError as e:
-        console.print(f"[red]Error communicating with server: HTTP {e.response.status_code}[/red]")
-        raise typer.Exit(code=3)
-    except (httpx.RequestError, httpx.ConnectError) as e:
-        console.print(f"[red]Network Error: {e}[/red]")
-        raise typer.Exit(code=3)
+    except (httpx.HTTPStatusError, httpx.RequestError, httpx.ConnectError, httpx.TimeoutException) as e:
+        handle_cli_exception(e, context="Commit status sync (pull)", endpoint="/repo/hash/branch/commit/status/sync", default_exit_code=3)
     except Exception as e:
-        console.print(f"[red]Error during pull: {e}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Commit status sync (pull)", endpoint="/repo/hash/branch/commit/status/sync", default_exit_code=1)
 

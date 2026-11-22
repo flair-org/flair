@@ -39,6 +39,7 @@ from ..core import config as config_mod
 from .utils.local_commits import _get_flair_dir, _get_latest_local_commit, _get_commit_by_hash, _get_head_info
 from .branch import _download_file, _ensure_ext
 from ..api.utils import _base_url, _client_with_auth
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
 console = Console()
@@ -107,8 +108,10 @@ def _fetch_zkp_data_for_commit(commit_hash: str) -> tuple[dict, Path]:
             commit_data = resp.json().get("data")
             if not commit_data:
                 raise ValueError("Commit not found on remote")
+        except typer.Exit:
+            raise
         except Exception as e:
-            raise typer.BadParameter(f"Could not fetch remote commit: {e}")
+            handle_cli_exception(e, context="Fetch remote commit ZKP", endpoint="/repo/hash/branch/commit/pull")
             
     # Extract ZKML Proof URIs
     zkml = (commit_data.get("params") or {}).get("ZKMLProof") or {}

@@ -26,6 +26,7 @@ from .utils.commit_signing import (
 )
 
 from .utils.local_commits import _is_commit_complete
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
 console = Console()
@@ -696,14 +697,7 @@ def push(
         
     except typer.Exit:
         raise
-    except httpx.HTTPStatusError as e:
-        error_detail = e.response.json() if e.response.content else {}
-        console.print(f"[red]HTTP Error: {e.response.status_code}[/red]")
-        console.print(f"[red]{error_detail.get('error', {}).get('message', str(e))}[/red]")
-        raise typer.Exit(code=3)
-    except (httpx.RequestError, httpx.ConnectError) as e:
-        console.print(f"[red]Network Error: {str(e)}[/red]")
-        raise typer.Exit(code=3)
+    except (httpx.HTTPStatusError, httpx.RequestError, httpx.ConnectError, httpx.TimeoutException) as e:
+        handle_cli_exception(e, context="Push", default_exit_code=3)
     except Exception as e:
-        console.print(f"[red]✗ Push failed: {str(e)}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Push", default_exit_code=1)

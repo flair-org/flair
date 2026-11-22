@@ -29,6 +29,7 @@ from ..core import config as config_mod
 from ..core import ssh as ssh_mod
 from ..api.client import verify_auth
 from ..api.utils import _client_with_auth
+from .utils.errors import handle_cli_exception
 from .utils.commit_signing import load_ssh_agent_identities
 
 app = typer.Typer()
@@ -118,10 +119,11 @@ def ssh_setup(
             )
             response.raise_for_status()
             registered_key = response.json().get("data", {})
+    except typer.Exit:
+        raise
     except Exception as exc:
-        console.print(f"[yellow]SSH key generated, but backend registration failed: {exc}[/yellow]")
-        console.print("[yellow]Run flair auth login first, then rerun flair auth ssh setup.[/yellow]")
-        raise typer.Exit(code=1)
+        console.print(f"[yellow]Note: SSH keypair was saved locally to {metadata.key_path}[/yellow]")
+        handle_cli_exception(exc, context="SSH key registration", endpoint="/user/keys", default_exit_code=1)
 
     console.print("[green]✓ SSH key setup complete[/green]")
     console.print(f"[dim]Private key:[/dim] {metadata.key_path}")

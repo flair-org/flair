@@ -13,6 +13,7 @@ import httpx
 from ..api import client as api_client
 from ..core.config import ALLOWED_BASE_MODEL_EXTENSIONS
 from ..core.session import load_session
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
 console = Console()
@@ -178,15 +179,10 @@ def upload_base_model(repo_hash: str, file_path: Path, force: bool = False) -> b
         console.print(f"  URL: {url}")
         return True
         
-    except httpx.TimeoutException:
-        console.print(
-            "[red]Failed to upload base model: Request timed out.[/red]\n"
-            "[yellow]The upload took longer than expected. You can increase the timeout using:\n"
-            "  set FLAIR_REQUEST_TIMEOUT=120 (PowerShell: $env:FLAIR_REQUEST_TIMEOUT=\"120\")[/yellow]"
-        )
-        return False
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Failed to upload base model: {e}[/red]")
+        handle_cli_exception(e, context="Base model upload", endpoint="/repo/hash/basemodel/upload")
         return False
 
 
@@ -312,6 +308,7 @@ def delete(
     try:
         api_client.delete_base_model(repo_hash)
         console.print("✓ Base model deleted", style="green")
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Failed to delete base model: {e}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Base model deletion", endpoint="/repo/hash/basemodel/delete")

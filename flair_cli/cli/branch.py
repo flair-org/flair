@@ -11,6 +11,7 @@ import httpx
 import shutil
 
 from ..api import client as api_client
+from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
 console = Console()
@@ -268,9 +269,10 @@ def list_or_create_branch(
             branches = api_client.get_branches(repo_hash)
             _update_branches_cache(branches)
             
+        except typer.Exit:
+            raise
         except Exception as e:
-            console.print(f"[red]Failed to delete branch: {e}[/red]")
-            raise typer.Exit(code=1)
+            handle_cli_exception(e, context="Branch deletion", endpoint="/repo/hash/branch/delete")
         return
     
     # Create new branch
@@ -292,9 +294,10 @@ def list_or_create_branch(
             branches = api_client.get_branches(repo_hash)
             _update_branches_cache(branches)
             
+        except typer.Exit:
+            raise
         except Exception as e:
-            console.print(f"[red]Failed to create branch: {e}[/red]")
-            raise typer.Exit(code=1)
+            handle_cli_exception(e, context="Branch creation", endpoint="/repo/hash/branch/create")
         return
     
     # List branches (default behavior)
@@ -315,9 +318,10 @@ def list_or_create_branch(
         
         console.print()
         
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Failed to list branches: {e}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Branch list", endpoint="/repo/hash/branch")
 
 
 @app.command()
@@ -389,6 +393,7 @@ def checkout(
         
         console.print(f"✓ Switched to branch '{branch_name}'", style="green")
         
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Failed to switch branch: {e}[/red]")
-        raise typer.Exit(code=1)
+        handle_cli_exception(e, context="Branch checkout", endpoint="/repo/hash/branch/get")
