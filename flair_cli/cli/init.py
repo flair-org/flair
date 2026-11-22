@@ -8,9 +8,11 @@ import typer
 from rich.console import Console
 from pathlib import Path
 import json
+import httpx
 
 from ..api import client as api_client
 from ..core.config import ALLOWED_BASE_MODEL_EXTENSIONS
+from ..core.session import load_session
 
 app = typer.Typer()
 console = Console()
@@ -49,6 +51,12 @@ def init(
             except Exception:
                 console.print("[dim]Existing .flair/repo.json could not be read[/dim]")
         return
+
+    # Check authentication before initializing
+    current_session = load_session()
+    if not current_session or not current_session.token:
+        console.print("[red]Not authenticated. Run 'flair auth login' first.[/red]")
+        raise typer.Exit(code=1)
 
     # Default repo name to current folder name
     if not name:
@@ -141,6 +149,14 @@ def init(
                         console.print(f"[yellow]Could not upload base model: {e}[/yellow]")
                         console.print("[dim]You can upload it later with: flair basemodel add_base <filename>[/dim]")
         
+    except httpx.TimeoutException:
+        console.print(
+            "[bold red]Failed to initialize repository: Request timed out.[/bold red]\n"
+            "[yellow]The remote backend may be spinning up from sleep (e.g. on Render).\n"
+            "Please wait a moment and try again, or increase the timeout using:\n"
+            "  set FLAIR_REQUEST_TIMEOUT=120 (PowerShell: $env:FLAIR_REQUEST_TIMEOUT=\"120\")[/yellow]"
+        )
+        raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"Failed to initialize repository: {e}", style="bold red")
         raise typer.Exit(code=1)

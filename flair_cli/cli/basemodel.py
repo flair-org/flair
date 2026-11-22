@@ -178,6 +178,13 @@ def upload_base_model(repo_hash: str, file_path: Path, force: bool = False) -> b
         console.print(f"  URL: {url}")
         return True
         
+    except httpx.TimeoutException:
+        console.print(
+            "[red]Failed to upload base model: Request timed out.[/red]\n"
+            "[yellow]The upload took longer than expected. You can increase the timeout using:\n"
+            "  set FLAIR_REQUEST_TIMEOUT=120 (PowerShell: $env:FLAIR_REQUEST_TIMEOUT=\"120\")[/yellow]"
+        )
+        return False
     except Exception as e:
         console.print(f"[red]Failed to upload base model: {e}[/red]")
         return False
