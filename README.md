@@ -87,6 +87,7 @@ pip install -e .
 - [Complete Workflow Example](#complete-workflow-example)
 - [Validation Rules](#validation-rules)
 - [Testing & Quality Assurance](#testing--quality-assurance)
+- [Deprecated: seqpush command](#deprecated-seqpush-command)
 
 ## Authentication
 
@@ -735,9 +736,17 @@ The `flair push` command synchronizes local commits with the remote FlairHub rep
 flair push -u origin main
 ```
 
-`flair push` negotiates the full local commit DAG with `POST /api/repo/hash/{repoHash}/push/manifest`, uploads only artifacts reported missing, and submits signed envelopes together to `POST /api/repo/hash/{repoHash}/push/finalize`. If the remote already has all commits, it reconciles the known local UUIDs and exits without uploading or finalizing.
+`flair push` executes an atomic 4-phase synchronization workflow:
+1. **Manifest Negotiation (`POST /push/manifest`)**: Submits the local commit DAG, target branch, and lineage references (`parentBranchHash`). The backend evaluates existing remote commits, returns pre-authorized artifact upload tokens for missing commits, and maps already-known commits in `existingCommitHashMap`.
+2. **Terminal Handshake on Up-to-Date**: If the remote branch is already up-to-date (`upToDate: True` or no missing commits), the CLI immediately reconciles local commits against `existingCommitHashMap` and exits cleanly without uploading or calling finalize.
+3. **Serial Artifact Upload**: Uploads only missing parameters and ZKP proofs using the pre-authorized single-use upload tokens (`zkmlToken`, `initiateToken`, `sessionId`).
+4. **Batch Envelope Finalization (`POST /push/finalize`)**: Submits signed batch commit envelopes in a single atomic request, updating the remote branch HEAD.
+5. **Two-Phase Journaled Reconciliation**: Atomically renames local commit directories and updates reference metadata from temporary local UUIDs to authoritative SHA-256 digests using a crash-resilient write-ahead journal (`.flair/pending_reconciliation.json`).
 
-The legacy `flair seqpush` command remains available for diagnostics and compatibility. It publishes each commit using five per-commit requests and uses the distinct route family `/api/repo/hash/{repoHash}/branch/hash/{branchHash}/commit/seqpush/create/{initiate,zkml-check,zkml-upload,params-upload,finalize}`. The original unprefixed `/commit/create/*` routes remain backend compatibility aliases. Both workflows use the same unprefixed ZKML and parameter artifact-upload routes; the manifest push uses the pre-authorized sessions returned by negotiation.
+**Automatic Fallback:**
+If `flair push` targets a backend instance that does not support the manifest handshake protocol (no `pushSessionId` returned during negotiation), it automatically falls back to `flair seqpush`.
+
+For details on the legacy sequential push workflow, see [Deprecated: seqpush command](#deprecated-seqpush-command).
 
 **Push Error Handling:**
 - **Unlinked Remote**: Stops before upload if remote repository is missing or not configured.
@@ -1522,4 +1531,36 @@ python -m pytest -m workflow -v
 ```
 
 For complete documentation on the test harness architecture, mock backend, fixtures, and how to write new tests, see [tests/README.md](tests/README.md).
+
+## Deprecated: seqpush command
+
+> [!WARNING]
+> The `seqpush` command is deprecated and maintained strictly for backward compatibility with legacy backend instances and diagnostic purposes. New deployments and modern workflows should use `flair push`.
+
+The `flair seqpush` (Sequential Push) command implements the legacy 5-step per-commit RPC upload loop. Instead of the atomic 4-phase manifest handshake used by `flair push`, `seqpush` iterates through unpushed local commits one by one and executes individual HTTP requests for each commit:
+
+1. **Step 1/5: Initiate Session** (`POST /api/.../commit/create/initiate`): Requests a per-commit session ID and initiate JWT token.
+2. **Step 2/5: Check zkML Uniqueness** (`POST /api/.../commit/create/zkml-check`): Verifies zkML proof hash uniqueness against existing commits.
+3. **Step 3/5: Upload zkML Proof** (`POST /api/.../commit/create/zkml-upload`): Uploads proof, settings, and verification key files.
+4. **Step 4/5: Upload Parameters** (`POST /api/.../commit/create/params-upload`): Uploads checkpoint or delta parameter tensors.
+5. **Step 5/5: Finalize Commit** (`POST /api/.../commit/create/finalize`): Signs and finalizes the single commit.
+
+### Usage
+
+```bash
+# Push sequentially to the current branch
+flair seqpush
+
+# Push sequentially to a specified branch
+flair seqpush main
+
+# Push and set upstream
+flair seqpush -u origin feature-branch
+```
+
+### When is it used?
+
+- **Automatic Fallback:** When running `flair push`, if the remote backend does not support the manifest handshake protocol (no `pushSessionId` returned during manifest negotiation), Flair automatically delegates to `seqpush`.
+- **Diagnostic / Troubleshooting:** If batch handshake validation fails or a specific commit in a chain needs granular inspection during upload, `seqpush` can be run manually to observe step-by-step per-commit RPC output.
+
 
