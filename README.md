@@ -1,6 +1,8 @@
 # Flair CLI
 
-Flair CLI is a local-first command-line tool for versioning trained machine learning models. It brings Git-style workflows—commits, branches, merges, rollback, and deterministic history—to model parameters and training artifacts, while preserving reproducibility and optional privacy-preserving collaboration.
+Flair CLI is an offline-first command-line tool for versioning trained machine learning models. It brings Git-style workflows—commits, branches, merges, rollback, and deterministic history—to model parameters and training artifacts, while preserving reproducibility and optional privacy-preserving collaboration.
+
+Repository initialization, branching, and commit generation run **100% offline** without requiring credentials or network access. All remote synchronization is deferred to `flair push`, which negotiates missing artifacts through an atomic **Push Manifest Handshake** and reconciles local commit trees with authoritative backend SHA-256 digests.
 
 ## Installation
 
@@ -177,38 +179,41 @@ The reset command preserves the authentication session and repository data. It d
 
 ### New repository
 
-Use `flair init` in the project directory to initialize it as a Flair repository. Authentication is required first.
+Use `flair init` in any project directory to initialize it as a local-first Flair repository. **Initialization runs 100% offline—no authentication, credentials, or network connection are required.**
 
 ```bash
-flair auth login
 flair init --name my-model --description "My model" --use-case "Image classification" --framework PyTorch
 ```
 
 If `--name` is omitted, Flair uses the current directory name as the repository name. The default framework is PyTorch.
 
-During initialization, Flair creates the `.flair` directory and repository metadata, including `repo.json`, `HEAD`, and the local directories used for parameters and commits. It also creates `config.yaml` and `.flairignore` when they do not already exist.
+During offline initialization, Flair:
+- Generates a local client UUID v4 `repoHash` in `.flair/repo.json` with `remote: null`.
+- Generates a default branch UUID v4 `branchHash` for `main` in `.flair/branches.json`.
+- Points `.flair/HEAD` to `main` with genesis commit hash `_GENESIS_COMMIT_`.
+- Creates `.flairignore` and local directories used for parameters, ZKPs, and commits.
 
 #### Automatic base model detection
 
-`flair init` checks the current directory for supported base model files. When it finds one or more files, it offers to upload a selected file as the repository base model.
+`flair init` checks the current directory for supported base model files. When it finds files, it records the detected base model locally. Physical upload to the backend is automatically deferred until you run `flair push`:
 
 ```bash
 flair init --description "My model"
 ## Found 2 base model file(s):
 ##   1. model.pt
 ##   2. architecture.onnx
-## Would you like to upload a base model now? [y/N]: y
+## Would you like to use a base model? [y/N]: y
 ## Select file number (1-2): 1
-## ✓ Base model uploaded successfully!
+## ✓ Base model configured (upload deferred to 'flair push')
 ```
 
 #### Skip the base model prompt
 
-Use `--skip-base-model` to initialize the repository without checking for or uploading a base model.
+Use `--skip-base-model` to initialize the repository without checking for a base model.
 
 ```bash
 flair init --skip-base-model
-## ✓ Repository initialized without base model upload
+## ✓ Repository initialized without base model
 ```
 
 Running `flair init` again in an already initialized directory reports the existing repository instead of recreating it.
@@ -253,25 +258,26 @@ flair new --example pytorch --output my_model.py
 
 ## Remote Commands
 
-Remote commands connect an initialized local directory to an existing Flair repository. The repository hash can be copied from the Flair web application or returned by the backend.
+Remote commands connect an initialized local directory to an existing remote FlairHub repository.
+
+> **Important (Local-First Design):** Flair will **never** automatically create a missing repository on the remote backend during `flair push`. You must first create or reference an existing repository on FlairHub and link it explicitly using `flair remote add`.
 
 ### Add a remote repository
 
-Run this from the model directory you want to connect. The current command syntax is:
+Run this from the model directory you want to connect:
 
 ```bash
 flair remote add origin <repo_hash>
 ```
 
-The remote name defaults to `origin`, so this is also valid:
+Use `origin` as the remote name for the standard Git-like setup. This updates the local `.flair/repo.json` metadata with the remote repository hash, fetches remote branch metadata, and binds tracking references.
 
-```bash
+If you attempt to run `flair push` before linking a remote (or if the remote repository does not exist on FlairHub), `flair push` halts immediately:
+
 ```
-
-Use `origin` as the remote name for the standard Git-like setup. This creates or updates the local `.flair/` metadata, downloads repository branch information, and selects the remote default branch when one is available. Authenticate first with:
-
-```bash
-flair auth login
+Error: Remote repository '...' not found on remote.
+Please create or link the repository on FlairHub first using:
+  flair remote add origin <remote_repo_hash>
 ```
 
 ### List or view configured remotes
@@ -348,14 +354,18 @@ flair basemodel download --target-dir ./models
 
 ## Commit Workflow
 
+All commit operations (`add`, `params create`, `metrics set`, `zkp create`, `commit -m`) execute completely offline. 
+
 ### Create a new local commit
-Creates a new commit in `.flair/.local_commits/` with a unique UUID. This must be done before creating params or ZKP.
+Creates a new commit directory in `.flair/.local_commits/` with a temporary client-generated UUID v4. This must be done before creating params or ZKP.
+
+> **Identity Reconciliation Note:** While offline, local commits use temporary UUID v4 hashes (e.g. `a1b2c3d4-e5f6-...`). When pushed to FlairHub via `flair push`, the backend computes authoritative 64-character SHA-256 digests from canonical metadata, and the CLI automatically and atomically reconciles local commit folders using an ACID journal (`.flair/pending_reconciliation.json`).
 
 Commit structure:
 
 ```json
 {
-   "commitHash": "commit_hash",
+   "commitHash": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
    "architecture": "pytorch|tensorflow|onnx",
    "params": "parameters if a checkpoint commit",
    "deltaParams": "delta parameters if a delta commit",
@@ -684,51 +694,57 @@ Reconstructing `C5` starts from `C4` and applies `C5`.
 
 ## Push Commits
 
-### Push commits to remote repository
-Uploads all completed local commits serially to the remote repository. Supports batch pushing of multiple commits in chronological order. Each commit uses either CHECKPOINT or DELTA type based on position in history.
+The `flair push` command synchronizes local commits with the remote FlairHub repository via an atomic **Push Manifest Handshake** and **Authoritative SHA-256 Commit Hash Reconciliation**.
 
-**New Batch Push Capability:**
-- Create multiple local commits before pushing
-- Push all completed commits at once in chronological order
-- Automatic synchronization with remote HEAD
-- Skips incomplete commits (stops at first incomplete)
-- Each commit goes through full 5-step validation
+### Push Workflow Phases
 
-**Prerequisites (for each commit):**
-- Must run `flair add` to create a commit
-- Must run `flair params create` to extract model parameters
-- Must run `flair zkp create` to generate zero-knowledge proof
-- Must run `flair commit -m "message"` to finalize commit, compute delta, and determine type
-- Commit must be complete (params, ZKP, delta computation, and finalized message)
+```
+  Phase 0: Local Merkle Chain Validation
+           (Verifies commit hash parentage locally before initiating any HTTP call)
+               │
+               ▼
+  Phase 1: Pre-flight Remote Existence Check
+           (GET /api/repo/hash/{repoHash} - halts with code 1 if 404 or unlinked)
+               │
+               ▼
+  Phase 2: Push Manifest Handshake Negotiation
+           (POST /api/repo/hash/{repoHash}/push/manifest)
+           - Submits local commit list + target branch
+           - Receives missingCommits checklist + upload session tokens
+               │
+               ▼
+  Phase 3: Serial Upload of Missing Artifacts
+           - Reads binary payloads into memory buffers and closes file handles immediately
+           - Uploads ZKP proofs (if missing) and parameter tensors (if missing)
+               │
+               ▼
+  Phase 4: Batch Finalization & Commit Hash Reconciliation
+           (POST /api/repo/hash/{repoHash}/push/finalize)
+           - Receives commitHashMap: { [uuid]: sha256 }
+           - Executes journaled directory rename & updates .flair/HEAD
+```
 
-**Upload behavior based on commit type:**
-- **CHECKPOINT** (genesis): Uploads full parameters from `.params/` folder (~100 MB for typical models)
-- **DELTA**: Uploads delta parameters from `.delta_params/` folder (difference from previous commit, ~2-8 MB typical)
-
-**Features:**
-- **Serial pushing**: Pushes commits in creation time order (oldest first)
-- **Smart filtering**: Only pushes complete commits, skips incomplete ones
-- **Remote sync**: Fetches remote HEAD via `/latest` endpoint to avoid duplicates
-- **Fail-fast execution**: Stops immediately on the first failed commit in a batch push
-- **Auto-branching**: Creates branch if it doesn't exist (e.g., first push creates 'main')
-- **ZKML validation**: Validates ZKML proof uniqueness before upload
-- **IPFS upload**: Uploads binary proof artifacts and parameters to IPFS
-- **HEAD update**: Updates local HEAD with latest pushed commit hash
-- **Progress tracking**: Shows X/Y commits pushed with detailed per-commit logs
+### Key Architectural Behaviors:
+- **No Auto-Creation of Remote Repositories**: If the repository is not linked or does not exist on FlairHub, push halts immediately prompting you to link an existing repository with `flair remote add origin <repo_hash>`.
+- **Pre-flight Integrity Check**: The local Merkle tree (parent hashes and merge parentages) is verified locally before any network calls are made. Broken chains fail fast.
+- **Manifest Negotiation**: The backend identifies which commits and artifacts already exist (e.g., deduplicated weights or previously uploaded checkpoints) and returns pre-authorized upload tokens for only the missing artifacts.
+- **Closed-Handle Stream Uploads**: Binary payloads are read into memory buffers and file handles are closed immediately prior to HTTP transmission, preventing Windows file-locking collisions during folder renames.
+- **Atomic Two-Phase Reconciliation**: The server generates authoritative SHA-256 commit hashes from canonical JSON. The CLI writes `.flair/pending_reconciliation.json` and atomically renames local commit directories from temporary UUIDs to authoritative SHA-256 digests. If interrupted, the rename automatically completes on the next command.
 
 ```bash
 # First push - single CHECKPOINT commit (genesis)
 flair push -u origin main
+## Verifying local commit chain integrity...
+## ✓ Local chain verified
 ## 
 ## Pushing to branch: main
-## Found 1 local commit(s)
-## Branch 'main' not found. Creating...
-## ✓ Branch 'main' created
+## ✓ Push Manifest Handshake negotiated with backend
+## 
 ## Remote HEAD: Genesis (no commits yet)
 ## Pushing 1 commit(s) serially...
 ## 
 ## ═══ Commit 1/1 ═══
-## Hash: a1b2c3d4...
+## Hash: a1b2c3d4-e5f6-...
 ## Type: CHECKPOINT
 ## Message: Initial model commit
 ## Parent: Genesis...
@@ -743,101 +759,80 @@ flair push -u origin main
 ## ✓ Parameters uploaded (hash: 1a2b3c4d...)
 ## Step 5/5: Finalizing commit...
 ## ✓ Commit 1 created successfully!
-##   Hash: a1b2c3d4...
+##   Hash: 4a7d8e9f... (Authoritative SHA-256)
 ##   Type: CHECKPOINT
+##   Local commit updated with server hash
 ## 
 ## ═══════════════════════════════════
 ## ✓ Push complete!
 ##   Branch: main
 ##   Commits pushed: 1/1
-##   Latest commit: a1b2c3d4...
+##   Latest commit: 4a7d8e9f...
 ## ═══════════════════════════════════
 ## 
 ## ✓ HEAD updated
 
 # Batch push - multiple DELTA commits at once
 flair push main
+## Verifying local commit chain integrity...
+## ✓ Local chain verified
+## 
 ## Pushing to branch: main
+## ✓ Push Manifest Handshake negotiated with backend
+## 
 ## Found 4 local commit(s)
-## Remote HEAD: a1b2c3d4...
-## Skipping incomplete commit: z9y8x7w6...  # Being worked on
+## Remote HEAD: 4a7d8e9f...
+## Skipping incomplete commit: z9y8x7w6...  # Skipped until finalized
 ## Pushing 3 commit(s) serially...
 ## 
 ## ═══ Commit 1/3 ═══
 ## Hash: b2c3d4e5...
 ## Type: DELTA
 ## Message: Updated with training data v2
-## Parent: a1b2c3d4...
-## 
-## Step 1/5: Initiating commit session...
-## ✓ Session initiated
-## Step 2/5: Checking ZKML proof uniqueness...
-## ✓ ZKML proof verified as unique
-## Step 3/5: Uploading ZKML proofs...
-## ✓ ZKML proofs uploaded
-## Step 4/5: Uploading parameters...
-## ✓ Parameters uploaded (hash: 2b3c4d5e...)
-## Step 5/5: Finalizing commit...
+## Parent: 4a7d8e9f...
+## [... uploads missing artifacts ...]
 ## ✓ Commit 1 created successfully!
-##   Hash: b2c3d4e5...
+##   Hash: 5b8e9f0a... (Authoritative SHA-256)
 ##   Type: DELTA
+##   Local commit updated with server hash
 ## 
 ## ═══ Commit 2/3 ═══
 ## Hash: c3d4e5f6...
 ## Type: DELTA
 ## Message: Improved accuracy to 95%
-## Parent: b2c3d4e5...
-## [... 5 steps ...]
+## Parent: 5b8e9f0a...
+## [... uploads missing artifacts ...]
 ## ✓ Commit 2 created successfully!
-##   Hash: c3d4e5f6...
+##   Hash: 6c9f0a1b... (Authoritative SHA-256)
 ##   Type: DELTA
+##   Local commit updated with server hash
 ## 
 ## ═══ Commit 3/3 ═══
 ## Hash: d4e5f6g7...
 ## Type: DELTA
 ## Message: Fine-tuned hyperparameters
-## Parent: c3d4e5f6...
-## [... 5 steps ...]
+## Parent: 6c9f0a1b...
+## [... uploads missing artifacts ...]
 ## ✓ Commit 3 created successfully!
-##   Hash: d4e5f6g7...
+##   Hash: 7d0a1b2c... (Authoritative SHA-256)
 ##   Type: DELTA
+##   Local commit updated with server hash
 ## 
 ## ═══════════════════════════════════
 ## ✓ Push complete!
 ##   Branch: main
 ##   Commits pushed: 3/3
-##   Latest commit: d4e5f6g7...
+##   Latest commit: 7d0a1b2c...
 ## ═══════════════════════════════════
 ## 
 ## ✓ HEAD updated
-
-# Push to current branch (from HEAD)
-flair push
-## ✓ All commits already pushed. Branch is up to date.
 ```
 
-**Push Workflow:**
-1. Fetches all local commits sorted by creation time (oldest first)
-2. Gets remote HEAD commit from `/latest` endpoint
-3. Filters only complete commits (params + ZKP + finalized message)
-4. Stops at first incomplete commit (skip the one being worked on)
-5. Compares local commits with remote HEAD to find divergence point
-6. For each commit to push (serially):
-   - Step 1: Initiates commit session with parent commit hash
-   - Step 2: Checks ZKML proof CID uniqueness
-   - Step 3: Uploads ZKML binary files (proof.zlib, verification_key.zlib, settings.zlib)
-   - Step 4: Uploads parameters binary file with SHA256 hash
-   - Step 5: Finalizes commit with message, paramHash, and architecture
-   - Updates parent hash for next commit in chain
-7. Updates `.flair/HEAD` with latest pushed commit hash and branch info
-8. Displays summary: commits pushed (X/Y) and final HEAD
-
-**Error handling:**
-- **Stops immediately** when any commit fails during a multi-commit push
-- **Records exact progress** by reporting how many commits were successfully pushed before failure
-- **No rollback**: already-pushed commits remain final on remote
-- **No retry loop in the same push**: user must run `flair push` again to continue
-- **No partial deletion**: remaining local commits are left untouched for later push
+**Push Error Handling:**
+- **Unlinked Remote**: Stops before upload if remote repository is missing or not configured.
+- **Broken DAG**: Halts before connecting if local commit Merkle integrity is broken.
+- **Fail-Fast Uploads**: Stops immediately on the first failed artifact upload, keeping already pushed commits authoritative on the server and local commits untouched.
+- **Resilient Recovery**: In the event of a client crash or power loss during the commit folder rename, the write-ahead journal (`.flair/pending_reconciliation.json`) is automatically detected and recovered by any subsequent CLI command.
 - Shows clear error messages for failed commits (✗ Commit X: reason)
 
 ## Pull Commits
@@ -1368,13 +1363,17 @@ flair reset --hard HEAD~1
 
 ## Branch Functions
 
-### create a new branch
+All local branch operations (`create`, `list`, `delete`, and local `checkout`) run completely offline and track state within `.flair/branches.json` without contacting the backend. New branches are automatically registered on FlairHub during `flair push`.
+
+### Create a new branch
+Generates a local UUID v4 `branchHash` and registers the branch in `.flair/branches.json`:
 ```bash
-flair branch new-feature  # Create new branch from current
+flair branch new-feature  # Create new branch from current HEAD
 ## ✓ Branch 'new-feature' created from current
 ```
 
-### list all branches
+### List all branches
+Lists branches tracked in local `.flair/branches.json`:
 ```bash
 flair branch              # List all branches
 ## Branches:
@@ -1382,16 +1381,17 @@ flair branch              # List all branches
 ##   new-feature
 ```
 
-### delete a branch
+### Delete a branch
+Deletes a branch locally from `.flair/branches.json`:
 ```bash
 flair branch -d old-branch  # Delete a branch
 ## ✓ Branch 'old-branch' deleted
 ```
 
-
-### switch branches
+### Switch branches
+Switches active branch. Checks local `.flair/branches.json` first; only queries remote if the branch is not cached locally:
 ```bash
-flair checkout main              # Uses cache if available, downloads otherwise
+flair checkout main              # Uses local cache if available, downloads otherwise
 flair checkout feature --no-cache # Force fresh download from API
 ## Caching artifacts for 'main'...
 ## ✓ Restored artifacts from cache
@@ -1404,14 +1404,15 @@ Here is the complete overview of the `.flair` directory structure:
 
 ```bash
 .flair/
-	repo.json                # Remote repo snapshot used by clone/checkout
-	HEAD                     # Current branch pointer (name + branchHash)
-	branches.json            # Cached branch list for the repo
+	repo.json                # Local repository metadata (remote: null or bound remote hash)
+	HEAD                     # Current branch pointer (name + branchHash + latest commit)
+	branches.json            # Local branch registry (offline and tracking)
+	pending_reconciliation.json # Temporary write-ahead journal during push commit renaming
 	class_space/             # Class space contracts defined per branch
 		<branch_name>/         # Branch specific folder
 			class_space.yaml     # The class space contract
 	.local_commits/          # Local commits directory
-		<uuidv4>/              # Each commit has its own directory
+		<uuid_or_sha256>/      # Client UUID offline; renamed to SHA-256 after push
 			commit.json          # Commit metadata (params, zkp, commitType, architectureHash, status)
 			params.pt|npz        # Extracted model weights (framework-dependent)
 			.delta_params/       # Delta parameters directory
@@ -1425,7 +1426,7 @@ Here is the complete overview of the `.flair` directory structure:
 		<branch_name>/         # Cached params/zkp files for that branch
 ```
 
-The `.flair` directory manages local state, distinguishing between the active branch and cached branches.
+The `.flair` directory manages local state, distinguishing between the active branch, cached branches, and the commit DAG.
 
 ### 1. Current Branch Files
 The active branch you are currently working on has its files directly exposed in the `.flair` directory for immediate use:
@@ -1433,7 +1434,7 @@ The active branch you are currently working on has its files directly exposed in
 ```bash
 .flair/
 	.local_commits/          # Local commits directory for the current state
-		<uuidv4>/              # Each commit has its own directory
+		<uuid_or_sha256>/      # Directories (client UUID initially; server SHA-256 after push)
 			commit.json          # Commit metadata (params, zkp, commitType, architectureHash, status)
 			params.pt|npz        # Extracted model weights (framework-dependent)
 			.delta_params/       # Delta parameters directory
@@ -1460,9 +1461,10 @@ When you switch to a different branch using `flair checkout`, the CLI intelligen
 
 ```bash
 .flair/
-	repo.json                # Remote repo snapshot used by clone/checkout
-	branches.json            # Cached branch list for the repo
+	repo.json                # Local repository metadata (contains remote link if configured)
+	branches.json            # Local branch list for the repo (UUID v4 branch hashes)
 ```
+
 ### Repo Settings
 
 `config.yaml` is the settings file in the project root which contains repository settings like `commitRetentionLimit`.
@@ -1470,25 +1472,27 @@ When you switch to a different branch using `flair checkout`, the CLI intelligen
 ### `HEAD` File Structure
 
 The `HEAD` file contains the following metadata about the repository state:
-- `currentBranch`: The name of the current branch (e.g., `branch_data.get("name")`).
-- `branchHash`: The hash of the current branch (e.g., `branch_data.get("branchHash")`).
-- `description`: The branch description (e.g., `branch_data.get("description")`).
-- `latestCommitHash`: The hash of the latest commit (e.g., `latest_commit.get("commitHash")`, added by clone/push).
+- `currentBranch`: The name of the current branch.
+- `branchHash`: The hash of the current branch (UUID v4).
+- `description`: The branch description.
+- `latestCommitHash`: The hash of the latest commit.
+- `previousCommit`: The hash of the previous commit.
 
 **Example `HEAD` file:**
 ```json
 {
    "currentBranch": "main",
-   "branchHash": "branch_hash",
-   "description": "optional branch description",
-   "latestCommitHash": "commit_hash",
-   "previousCommit": "commit_hash"
+   "branchHash": "c2b64d0a-9d29-4fb5-97e3-0d3f2a1b9e84",
+   "description": "Default branch",
+   "latestCommitHash": "4a7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d",
+   "previousCommit": "4a7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d"
 }
 ```
 
 ### `commit.json` Structure
 
 The `commit.json` metadata file includes architecture-aware fields:
+- `commitHash`: Temporary UUID v4 offline; overwritten with authoritative SHA-256 upon `flair push`
 - `commitType`: `"CHECKPOINT"` or `"DELTA"`
 - `architectureHash`: `...`
 - `previousArchitectureHash`: `...` or `null`
@@ -1500,22 +1504,28 @@ Here's a complete workflow from initialization through collaborative training,
 local merge creation, and pushing the merged result:
 
 ```bash
-# 1. Authenticate and initialize the repository
-flair auth login
+# 1. Initialize repository 100% offline (no login or internet required)
 flair init --name my-model --description "My ML model repo" --framework PyTorch
 
-# 2. Upload the starting base model (owner or admin access required)
-flair basemodel add model.pt
-
-# 3. Create a local commit, extract parameters, and define the class space
+# 2. Create local commits, extract parameters, stage metrics, and generate ZKP (all offline)
 flair add
 flair params create --model model.pt --classes cat,dog,bird
 flair metrics set --epoch 1 --accuracy 0.91
 flair zkp create --model model.pt --input-dims "[1, 3, 224, 224]"
-flair commit -m "Initial model update"
+flair commit -m "Initial model checkpoint"
+
+# 3. When ready to publish or share on FlairHub:
+# Authenticate and link an existing FlairHub remote repository
+flair auth login
+flair auth ssh setup
+flair auth ssh env
+flair remote add origin <remote_repo_hash>
+
+# 4. Push to remote:
+# Executes local chain validation -> remote check -> manifest handshake -> serial upload -> SHA-256 DAG reconciliation
 flair push -u origin main
 
-# 4. Repeat add/params/metrics/zkp/commit for compatible sibling updates.
+# 5. Repeat add/params/metrics/zkp/commit for compatible sibling updates.
 # Sibling commits must share the same parent and compatible class space.
 flair add
 flair params create --model contributor_a.pt --classes cat,dog,bird
@@ -1527,28 +1537,28 @@ flair params create --model contributor_b.pt --classes cat,dog,bird
 flair zkp create --model contributor_b.pt
 flair commit -m "Contributor B update"
 
-# 5. Inspect mergeable commits and create a local FedAvg candidate
+# 6. Inspect mergeable commits and create a local FedAvg candidate
 flair merge list --min-children 2
 flair merge create --min-children 2 --strategy fedavg
 # Candidate output is stored under .flair/.merge_candidates/.
 
-# 6. Formalize the merge candidate as a new checkpoint commit
+# 7. Formalize the merge candidate as a new checkpoint commit
 flair add
 flair params create --model .flair/.merge_candidates/<candidate_hash>/params.pt --classes cat,dog,bird
 flair zkp create --model .flair/.merge_candidates/<candidate_hash>/params.pt
 flair commit -m "FedAvg merge of contributor updates"
 flair push main
 
-# 7. Inspect or compare the resulting history
+# 8. Inspect or compare the resulting history
 flair log --graph
 flair diff <commitA> <commitB>
 
-# 8. Revert a pushed commit, or reset an unpushed local commit
+# 9. Revert a pushed commit, or reset an unpushed local commit
 flair revert -m "Undo accidental change"
 flair push main
 flair reset --hard HEAD~1
 
-# 9. Continue independent work on another branch
+# 10. Continue independent work on another branch
 flair branch experimental
 flair checkout experimental
 flair add
