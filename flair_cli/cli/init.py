@@ -1,6 +1,6 @@
 """
 Initialize a Flair repository in the current directory.
-Creates a .flair folder and registers the repository with the backend.
+Creates a .flair folder locally with offline UUID identities.
 """
 
 from __future__ import annotations
@@ -8,7 +8,8 @@ import typer
 from rich.console import Console
 from pathlib import Path
 import json
-import httpx
+import uuid
+from datetime import datetime, timezone
 
 from ..api import client as api_client
 from ..core.config import ALLOWED_BASE_MODEL_EXTENSIONS
@@ -37,7 +38,7 @@ def init(
     framework: str = typer.Option("PyTorch", help="ML framework (PyTorch / TensorFlow / Tensorflow)"),
     skip_base_model: bool = typer.Option(False, "--skip-base-model", help="Skip base model upload prompt")
 ):
-    """Initialize a new Flair repository in the current directory."""
+    """Initialize a new local-first Flair repository in the current directory."""
     flair_dir = Path.cwd() / ".flair"
 
     # If already initialized, show repo info and exit
@@ -59,22 +60,16 @@ def init(
         console.print("[red]Not authenticated. Run 'flair auth login' first.[/red]")
         raise typer.Exit(code=1)
 
+    owner = current_session.principal or current_session.wallet_address or "local"
+
     # Default repo name to current folder name
     if not name:
         name = Path.cwd().name
         console.print(f"[dim]Using current folder name as repository name: {name}[/dim]")
 
-    payload = {
-        "metadata": {
-            "description": description,
-            "useCase": use_case,
-            "framework": framework
-        },
-        "name": name
-    }
-
     try:
-        resp = api_client.create_repo(payload)
+        repo_uuid = str(uuid.uuid4())
+        branch_uuid = str(uuid.uuid4())
 
         flair_dir.mkdir(exist_ok=True)
         (flair_dir / ".params").mkdir(exist_ok=True)
@@ -83,20 +78,53 @@ def init(
         (flair_dir / ".prev_zkp").mkdir(exist_ok=True)
         (flair_dir / ".local_commits").mkdir(exist_ok=True)
 
+        repo_data = {
+            "id": repo_uuid,
+            "hash": repo_uuid,
+            "repoHash": repo_uuid,
+            "name": name,
+            "owner": owner,
+            "ownerAddress": owner,
+            "metadata": {
+                "name": name,
+                "creator": owner,
+                "description": description,
+                "useCase": use_case,
+                "framework": framework,
+            },
+            "defaultBranch": "main",
+            "defaultBranchHash": branch_uuid,
+            "remote": None,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+
         repo_file = flair_dir / "repo.json"
         with open(repo_file, "w") as f:
-            json.dump(resp, f, indent=2)
+            json.dump(repo_data, f, indent=2)
 
-        # Initialize HEAD file if it doesn't exist
+        # Initialize HEAD file
         head_file = flair_dir / "HEAD"
-        if not head_file.exists():
-            head_data = {
-                "currentBranch": "main",
-                "branchHash": None,
-                "previousCommit": None
+        head_data = {
+            "currentBranch": "main",
+            "branchHash": branch_uuid,
+            "previousCommit": None
+        }
+        with open(head_file, "w") as f:
+            json.dump(head_data, f, indent=2)
+
+        # Initialize branches file with default branch
+        branches_file = flair_dir / "branches.json"
+        branches_data = [
+            {
+                "name": "main",
+                "branchHash": branch_uuid,
+                "parentBranchHash": None,
+                "description": "Default main branch",
+                "createdAt": datetime.now(timezone.utc).isoformat()
             }
-            with open(head_file, "w") as f:
-                json.dump(head_data, f, indent=2)
+        ]
+        with open(branches_file, "w") as f:
+            json.dump(branches_data, f, indent=2)
 
         # Create basic ignore file
         ignore_file = Path.cwd() / ".flairignore"
@@ -111,46 +139,21 @@ def init(
                 f.write(settings_content)
 
         console.print("✓ Repository initialized successfully!", style="green")
-        console.print(f"  Name: {resp.get('name')}")
-        console.print(f"  Hash: {resp.get('repoHash')}")
+        console.print(f"  Name: {repo_data.get('name')}")
+        console.print(f"  Hash: {repo_data.get('repoHash')}")
         console.print(f"  Location: {flair_dir}")
-        
-        # Check for base model files and prompt to upload
+        console.print("[dim]Local-first repository initialized. No remote network calls made.[/dim]")
+
+        # Check for base model files without making remote upload calls
         if not skip_base_model:
             base_model_files = _find_base_model_files()
             if base_model_files:
                 console.print(f"\n[cyan]Found {len(base_model_files)} base model file(s) in current directory:[/cyan]")
                 for idx, file in enumerate(base_model_files, 1):
                     console.print(f"  {idx}. {file.name}")
-                
-                upload = typer.confirm("\nWould you like to upload a base model now?", default=False)
-                if upload:
-                    if len(base_model_files) == 1:
-                        selected_file = base_model_files[0]
-                    else:
-                        selection = typer.prompt(
-                            f"Select file number (1-{len(base_model_files)})",
-                            type=int,
-                            default=1
-                        )
-                        if 1 <= selection <= len(base_model_files):
-                            selected_file = base_model_files[selection - 1]
-                        else:
-                            console.print("[yellow]Invalid selection, skipping base model upload[/yellow]")
-                            return
-                    
-                    # Upload the selected base model
-                    try:
-                        from . import basemodel
-                        repo_hash = resp.get("repoHash")
-                        success = basemodel.upload_base_model(repo_hash, selected_file, force=True)
-                        if not success:
-                            console.print("[yellow]Base model upload failed, but repository is initialized[/yellow]")
-                    except Exception as e:
-                        console.print(f"[yellow]Could not upload base model: {e}[/yellow]")
-                        console.print("[dim]You can upload it later with: flair basemodel add_base <filename>[/dim]")
-        
+                console.print("[dim]Base model detected. It will be uploaded when pushing to a remote repository.[/dim]")
+
     except typer.Exit:
         raise
     except Exception as e:
-        handle_cli_exception(e, context="Repository initialization", endpoint="/repo/create", default_exit_code=1)
+        handle_cli_exception(e, context="Repository initialization", endpoint="local-init", default_exit_code=1)

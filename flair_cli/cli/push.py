@@ -26,6 +26,7 @@ from .utils.commit_signing import (
 )
 
 from .utils.local_commits import _is_commit_complete
+from .utils.commit_reconciliation import apply_commit_hash_reconciliation, recover_pending_reconciliation_if_needed
 from .utils.errors import handle_cli_exception
 
 app = typer.Typer()
@@ -191,6 +192,21 @@ def _load_repo_settings() -> dict:
 
     return settings
 
+def _check_remote_repo_exists(repo_hash: str) -> bool:
+    """Check if the remote repository exists on Flair backend."""
+    try:
+        with _client_with_auth() as client:
+            response = client.get(f"{_base_url()}/api/repo/hash/{repo_hash}")
+            if response.status_code == 200:
+                data = response.json()
+                if data and (data.get("id") or data.get("data") or data.get("repoHash") or data.get("name")):
+                    return True
+                return True
+            return False
+    except Exception:
+        return False
+
+
 def _compute_param_hash(file_path: Path) -> str:
     """Compute SHA256 hash of params file."""
     sha256 = hashlib.sha256()
@@ -222,6 +238,7 @@ def push(
         flair push  # Push to current branch
     """
     try:
+        recover_pending_reconciliation_if_needed()
         # Get all local commits sorted by creation time
         all_local_commits = _get_all_local_commits()
         if not all_local_commits:
@@ -240,6 +257,36 @@ def push(
         if not repo_hash:
             console.print("[red]Repository hash not found in config.[/red]")
             raise typer.Exit(1)
+
+        # Filter commits to push: only complete commits
+        commits_to_push = []
+        for commit_data, commit_dir in all_local_commits:
+            if _is_commit_complete(commit_data, commit_dir):
+                commits_to_push.append((commit_data, commit_dir))
+            else:
+                console.print(f"[dim]Skipping incomplete commit: {commit_data.get('commitHash', 'unknown')[:16]}...[/dim]")
+                break
+        
+        if not commits_to_push:
+            console.print("[yellow]No complete commits to push.[/yellow]")
+            console.print("[dim]Ensure commits have params, ZKP, and are finalized with 'flair commit -m'.[/dim]")
+            raise typer.Exit(0)
+        
+        # Verify local commit chain integrity (merkle tree)
+        console.print("[dim]Verifying local commit chain integrity...[/dim]")
+        chain_valid, chain_error = _verify_local_commit_chain(commits_to_push, remote_head_hash=None)
+        if not chain_valid:
+            console.print(f"[red]✗ Chain integrity check failed: {chain_error}[/red]")
+            console.print(f"[yellow]Cannot push commits with broken chain. Fix and try again.[/yellow]")
+            raise typer.Exit(code=1)
+        console.print("[green]✓ Local chain verified[/green]")
+
+        # Check if remote repository exists (User Decision 1: Do not auto-create on push, prompt user to add/link first)
+        if not _check_remote_repo_exists(repo_hash):
+            console.print(f"[red]Error: Remote repository '{repo_hash}' not found on remote.[/red]")
+            console.print("[yellow]Please create or link the repository on FlairHub first using:[/yellow]")
+            console.print(f"  flair remote add origin <remote_repo_hash>\n")
+            raise typer.Exit(code=1)
         
         # Get HEAD info
         head_info = _get_head_info()
@@ -298,30 +345,6 @@ def push(
         else:
             console.print(f"[dim]Remote HEAD: Genesis (no commits yet)[/dim]")
         
-        # Filter commits to push: only complete commits
-        commits_to_push = []
-        for commit_data, commit_dir in all_local_commits:
-            if _is_commit_complete(commit_data, commit_dir):
-                commits_to_push.append((commit_data, commit_dir))
-            else:
-                # Stop at first incomplete commit (being worked on)
-                console.print(f"[dim]Skipping incomplete commit: {commit_data.get('commitHash', 'unknown')[:16]}...[/dim]")
-                break
-        
-        if not commits_to_push:
-            console.print("[yellow]No complete commits to push.[/yellow]")
-            console.print("[dim]Ensure commits have params, ZKP, and are finalized with 'flair commit -m'.[/dim]")
-            raise typer.Exit(0)
-        
-        # Verify local commit chain integrity (merkle tree)
-        console.print("[dim]Verifying local commit chain integrity...[/dim]")
-        chain_valid, chain_error = _verify_local_commit_chain(commits_to_push, remote_head_hash=remote_head_hash)
-        if not chain_valid:
-            console.print(f"[red]✗ Chain integrity check failed: {chain_error}[/red]")
-            console.print(f"[yellow]Cannot push commits with broken chain. Fix and try again.[/yellow]")
-            raise typer.Exit(code=1)
-        console.print("[green]✓ Local chain verified[/green]")
-        
         # Find where to start pushing (after remote head)
         start_index = 0
         if remote_head_hash:
@@ -378,10 +401,52 @@ def push(
         
         # Determine initial parent commit hash
         parent_commit_hash = remote_head_hash if remote_head_hash else "_GENESIS_COMMIT_"
+
+        # Phase 1: Push Manifest Handshake negotiation (User Decision 3)
+        manifest_payload = {
+            "clientVersion": "1.0.0",
+            "repoHash": repo_hash,
+            "targetBranch": {
+                "name": target_branch_name,
+                "branchHash": branch_hash,
+                "parentBranchHash": head_info.get("branchHash") if head_info else None,
+                "description": f"Push to {target_branch_name}"
+            },
+            "remoteHeadCommitHash": remote_head_hash,
+            "commits": [
+                {
+                    "localCommitHash": c_data.get("commitHash"),
+                    "previousCommitHash": c_data.get("previousCommitHash"),
+                    "commitType": c_data.get("commitType", "CHECKPOINT"),
+                    "message": c_data.get("message", ""),
+                    "timestamp": c_data.get("timestamp"),
+                    "params": c_data.get("params"),
+                    "zkp": c_data.get("zkp"),
+                    "metrics": c_data.get("metrics")
+                }
+                for c_data, c_dir in commits_to_push
+            ]
+        }
+
+        manifest_negotiated = False
+        negotiation_data = None
+        try:
+            negotiation_data = api_client.push_manifest(repo_hash, manifest_payload)
+            if negotiation_data and isinstance(negotiation_data, dict):
+                manifest_negotiated = True
+                console.print("[green]✓ Push Manifest Handshake negotiated with backend[/green]\n")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                manifest_negotiated = False
+            else:
+                raise
+        except Exception:
+            manifest_negotiated = False
         
         # Push each commit serially
         framework = repo_config.get("metadata", {}).get("framework") or repo_config.get("framework", "unknown")
         pushed_count = 0
+        commit_hash_map: dict[str, str] = {}
         
         for idx, (commit_data, commit_dir) in enumerate(commits_to_push, 1):
             commit_hash = commit_data.get("commitHash")
@@ -520,16 +585,19 @@ def push(
                         data=data
                     )
                 else:
-                    files = {
-                        "proof": ("proof.zlib", open(zkp_files["proof_file"], "rb"), "application/octet-stream"),
-                        "settings": ("settings.zlib", open(zkp_files["settings_file"], "rb"), "application/octet-stream"),
-                        "verification_key": ("verification_key.zlib", open(zkp_files["vk_file"], "rb"), "application/octet-stream")
-                    }
-                    response = client.post(
-                        f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-upload",
-                        files=files,
-                        data=data
-                    )
+                    with open(zkp_files["proof_file"], "rb") as f_p, \
+                         open(zkp_files["settings_file"], "rb") as f_s, \
+                         open(zkp_files["vk_file"], "rb") as f_v:
+                        files = {
+                            "proof": ("proof.zlib", f_p.read(), "application/octet-stream"),
+                            "settings": ("settings.zlib", f_s.read(), "application/octet-stream"),
+                            "verification_key": ("verification_key.zlib", f_v.read(), "application/octet-stream")
+                        }
+                        response = client.post(
+                            f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/zkml-upload",
+                            files=files,
+                            data=data
+                        )
                 response.raise_for_status()
                 zkml_upload_data = response.json()
             
@@ -546,9 +614,10 @@ def push(
             param_hash = _compute_param_hash(params_file)
             
             with _client_with_auth() as client:
-                files = {
-                    "params": (params_file.name, open(params_file, "rb"), "application/octet-stream")
-                }
+                with open(params_file, "rb") as pf:
+                    files = {
+                        "params": (params_file.name, pf.read(), "application/octet-stream")
+                    }
                 data = {
                     "sessionId": session_id,
                     "initiateToken": initiate_token,
@@ -654,10 +723,30 @@ def push(
                 console.print(f"[yellow]Warning: Failed to update local commit.json: {e}[/yellow]")
                 console.print(f"[yellow]Server hash and local hash may differ. Consider re-pushing.[/yellow]\n")
             
+            # Record commit mapping for reconciliation
+            commit_hash_map[commit_hash] = returned_commit_hash
+
             # Update parent for next commit
             parent_commit_hash = returned_commit_hash
             pushed_count += 1
         
+        # Phase 4: Finalize and Commit Hash Reconciliation (User Decision 4)
+        if manifest_negotiated and negotiation_data:
+            try:
+                finalize_resp = api_client.push_finalize(repo_hash, {
+                    "pushSessionId": negotiation_data.get("pushSessionId"),
+                    "repoHash": repo_hash,
+                    "branchHash": branch_hash,
+                    "completedCommits": list(commit_hash_map.keys())
+                })
+                if isinstance(finalize_resp, dict) and finalize_resp.get("commitHashMap"):
+                    commit_hash_map.update(finalize_resp["commitHashMap"])
+            except Exception:
+                pass
+
+        if commit_hash_map:
+            apply_commit_hash_reconciliation(commit_hash_map, parent_commit_hash, target_branch_name)
+
         # Summary
         console.print(f"[bold green]═══════════════════════════════════[/bold green]")
         console.print(f"[bold green]✓ Push complete![/bold green]")

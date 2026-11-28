@@ -76,11 +76,12 @@ def test_commit_pipeline_full_success(
         "data": [{"fingerprint": "SHA256:mockfingerprint123456789"}]
     }
 
-    with patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
+    with patch("flair_cli.cli.push.api_client.get_repo_by_hash", return_value={"id": "r-id", "repoHash": "r-hash", "name": "pipe-repo"}), \
+         patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
          patch("flair_cli.cli.push._get_remote_latest_commit", return_value=None), \
          patch("flair_cli.cli.push._client_with_auth", return_value=mock_client):
         res_push = cli_runner.invoke(app, ["push"])
-        assert res_push.exit_code == 0
+        assert res_push.exit_code == 0, f"OUTPUT:\n{res_push.output}"
         assert steps_called == ["initiate", "zkml-check", "zkml-upload", "params-upload", "finalize"]
         assert "Push complete!" in res_push.output
 
@@ -130,7 +131,8 @@ def test_commit_pipeline_aborts_when_zkml_not_unique(
         "data": [{"fingerprint": "SHA256:mockfingerprint123456789"}]
     }
 
-    with patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
+    with patch("flair_cli.cli.push.api_client.get_repo_by_hash", return_value={"id": "r-id", "repoHash": "r-hash", "name": "pipe-repo"}), \
+         patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
          patch("flair_cli.cli.push._get_remote_latest_commit", return_value=None), \
          patch("flair_cli.cli.push._client_with_auth", return_value=mock_client):
         res_push = cli_runner.invoke(app, ["push"])
@@ -190,7 +192,8 @@ def test_commit_pipeline_aborts_on_zkml_upload_failure(
         "data": [{"fingerprint": "SHA256:mockfingerprint123456789"}]
     }
 
-    with patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
+    with patch("flair_cli.cli.push.api_client.get_repo_by_hash", return_value={"id": "r-id", "repoHash": "r-hash", "name": "pipe-repo"}), \
+         patch("flair_cli.cli.push.api_client.get_branch_by_name", return_value={"branchHash": "b-hash", "id": "b-id"}), \
          patch("flair_cli.cli.push._get_remote_latest_commit", return_value=None), \
          patch("flair_cli.cli.push._client_with_auth", return_value=mock_client):
         res_push = cli_runner.invoke(app, ["push"])

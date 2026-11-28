@@ -334,7 +334,45 @@ class MockFederatedBackend:
         resp.status_code = 200
         url_str = str(url)
 
-        if "commit/create/initiate" in url_str:
+        if "push/manifest" in url_str:
+            json_body = kwargs.get("json", {})
+            bname = json_body.get("targetBranch", {}).get("name", "main")
+            commits_in_manifest = json_body.get("commits", [])
+            resp.json.return_value = {
+                "data": {
+                    "pushSessionId": "mock-push-session-123",
+                    "status": "NEGOTIATED",
+                    "branchHash": f"branch-{bname}-hash",
+                    "upToDate": False,
+                    "missingCommits": [
+                        {
+                            "localCommitHash": c.get("localCommitHash"),
+                            "needsParams": True,
+                            "needsZkp": c.get("commitType") != "CHECKPOINT",
+                            "sessionId": f"mock-session-{c.get('localCommitHash')}",
+                            "initiateToken": make_mock_jwt({"jti": f"mock-jti-{c.get('localCommitHash')}", "sub": "test-user"})
+                        }
+                        for c in commits_in_manifest
+                    ]
+                }
+            }
+        elif "push/finalize" in url_str:
+            json_body = kwargs.get("json", {})
+            completed = json_body.get("completedCommits", [])
+            hash_map = {
+                c_uuid: f"sha256-authoritative-{idx+1}-{c_uuid[:8]}"
+                for idx, c_uuid in enumerate(completed)
+            }
+            latest_hash = list(hash_map.values())[-1] if hash_map else "sha256-head"
+            resp.json.return_value = {
+                "data": {
+                    "success": True,
+                    "branchHead": latest_hash,
+                    "commitHashMap": hash_map,
+                    "verificationStatus": "PENDING_VERIFICATION"
+                }
+            }
+        elif "commit/create/initiate" in url_str:
             resp.json.return_value = {
                 "sessionId": "mock-session-123",
                 "initiateToken": make_mock_jwt({"jti": "mock-jti-nonce-987", "sub": "test-user"})
@@ -398,7 +436,7 @@ class MockFederatedBackend:
             if not self.base_model_url:
                 err_resp = MagicMock()
                 err_resp.status_code = 400
-                err_resp.raise_for_status.side_effect = httpx.HTTPStatusError("No base model", request=MagicMock(), response=err_resp)
+                err_resp.raise_for_status.side_effect = httpx.HTTPStatusError("No base model", request=None, response=err_resp)
                 return err_resp
             resp.json.return_value = {"data": self.base_model_url, "fileExtension": ".pt"}
         elif "clone" in url_str:

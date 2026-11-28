@@ -86,7 +86,8 @@ def test_scenario_b_branching_collab(
         # -----------------------------------------------------------------
         res_br = cli_runner.invoke(app, ["branch", "experiment-lora"])
         assert res_br.exit_code == 0
-        assert "experiment-lora" in backend.branches
+        branches_data = json.loads((repo_b / ".flair" / "branches.json").read_text())
+        assert any(b["name"] == "experiment-lora" for b in branches_data)
 
         res_co = cli_runner.invoke(app, ["checkout", "experiment-lora"])
         assert res_co.exit_code == 0

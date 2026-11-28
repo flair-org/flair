@@ -1,5 +1,5 @@
 """
-Branch management commands - git-like syntax with intelligent caching.
+Branch management commands - git-like syntax with intelligent caching and local-first branch creation.
 """
 from __future__ import annotations
 import typer
@@ -9,6 +9,8 @@ from pathlib import Path
 import json
 import httpx
 import shutil
+import uuid
+from datetime import datetime, timezone
 
 from ..api import client as api_client
 from .utils.errors import handle_cli_exception
@@ -233,12 +235,12 @@ def list_or_create_branch(
     delete: str = typer.Option(None, "-d", "--delete", help="Delete specified branch"),
     description: str = typer.Option(None, help="Branch description")
 ):
-    """List all branches or create a new branch.
+    """List all branches or create a new branch locally.
     
     Examples:
       flair branch              # List all branches
-      flair branch new-feature  # Create new branch from current
-      flair branch -d old-branch  # Delete a branch
+      flair branch new-feature  # Create new branch locally from current
+      flair branch -d old-branch  # Delete a local branch
     """
     repo = _get_current_repo()
     if not repo:
@@ -247,6 +249,7 @@ def list_or_create_branch(
     
     repo_hash = repo.get("hash") or repo.get("repoHash")
     current_branch = _get_current_branch()
+    branches = _get_all_branches()
     
     # Delete branch
     if delete:
@@ -254,74 +257,55 @@ def list_or_create_branch(
             console.print(f"[red]Cannot delete current branch '{delete}'. Switch to another branch first.[/red]")
             raise typer.Exit(code=1)
         
-        try:
-            # Get branch hash first
-            branches = _get_all_branches()
-            target_branch = next((b for b in branches if b.get("name") == delete), None)
-            if not target_branch:
-                console.print(f"[red]Branch '{delete}' not found.[/red]")
-                raise typer.Exit(code=1)
-            
-            api_client.delete_branch(repo_hash, target_branch['branchHash'])
-            console.print(f"✓ Branch '{delete}' deleted", style="green")
-            
-            # Refresh branches cache
-            branches = api_client.get_branches(repo_hash)
-            _update_branches_cache(branches)
-            
-        except typer.Exit:
-            raise
-        except Exception as e:
-            handle_cli_exception(e, context="Branch deletion", endpoint="/repo/hash/branch/delete")
+        target_branch = next((b for b in branches if b.get("name") == delete), None)
+        if not target_branch:
+            console.print(f"[red]Branch '{delete}' not found.[/red]")
+            raise typer.Exit(code=1)
+        
+        # Remove from local branches
+        branches = [b for b in branches if b.get("name") != delete]
+        _update_branches_cache(branches)
+        console.print(f"✓ Branch '{delete}' deleted", style="green")
         return
     
-    # Create new branch
+    # Create new branch locally
     if branch_name:
         if not current_branch:
             console.print("[red]No current branch set. Cannot create branch from nowhere.[/red]")
             raise typer.Exit(code=1)
         
-        try:
-            new_branch = api_client.create_branch(
-                repo_hash,
-                branch_name,
-                current_branch.get("branchHash"),
-                description
-            )
-            console.print(f"✓ Branch '{branch_name}' created", style="green")
-            
-            # Refresh branches cache
-            branches = api_client.get_branches(repo_hash)
-            _update_branches_cache(branches)
-            
-        except typer.Exit:
-            raise
-        except Exception as e:
-            handle_cli_exception(e, context="Branch creation", endpoint="/repo/hash/branch/create")
+        if any(b.get("name") == branch_name for b in branches):
+            console.print(f"[red]Branch '{branch_name}' already exists.[/red]")
+            raise typer.Exit(code=1)
+        
+        branch_uuid = str(uuid.uuid4())
+        new_branch = {
+            "name": branch_name,
+            "branchHash": branch_uuid,
+            "parentBranchHash": current_branch.get("branchHash"),
+            "description": description or f"Branch {branch_name}",
+            "createdAt": datetime.now(timezone.utc).isoformat()
+        }
+        branches.append(new_branch)
+        _update_branches_cache(branches)
+        console.print(f"✓ Branch '{branch_name}' created", style="green")
         return
     
     # List branches (default behavior)
-    try:
-        branches = api_client.get_branches(repo_hash)
-        
-        if not branches:
-            console.print("[dim]No branches found. Create one with 'flair branch <name>'[/dim]")
-            return
-        
-        current_name = current_branch.get("currentBranch") if current_branch else None
-        
-        console.print("\n[bold]Branches:[/bold]")
-        for branch in branches:
-            prefix = "* " if branch.get("name") == current_name else "  "
-            style = "green" if branch.get("name") == current_name else "white"
-            console.print(f"{prefix}{branch.get('name')}", style=style)
-        
-        console.print()
-        
-    except typer.Exit:
-        raise
-    except Exception as e:
-        handle_cli_exception(e, context="Branch list", endpoint="/repo/hash/branch")
+    if not branches:
+        console.print("[dim]No branches found. Create one with 'flair branch <name>'[/dim]")
+        return
+    
+    current_name = current_branch.get("currentBranch") if current_branch else None
+    
+    console.print("\n[bold]Branches:[/bold]")
+    for branch in branches:
+        b_name = branch.get("name")
+        prefix = "* " if b_name == current_name else "  "
+        style = "green" if b_name == current_name else "white"
+        console.print(f"{prefix}{b_name}", style=style)
+    
+    console.print()
 
 
 @app.command()
@@ -332,7 +316,7 @@ def checkout(
     """Switch to a different branch with intelligent artifact caching.
     
     - If branch is cached, artifacts are restored from cache
-    - If branch is not cached, artifacts are downloaded and cached
+    - If branch is not cached and remote is available, artifacts are downloaded and cached
     - Current artifacts are cached before switching
     
     Example:
@@ -352,48 +336,65 @@ def checkout(
         console.print(f"[dim]Already on branch '{branch_name}'[/dim]")
         return
     
-    try:
-        # Fetch branch details by name
-        branch_data = api_client.get_branch_by_name(repo_hash, branch_name)
-        
-        if not branch_data or isinstance(branch_data, list):
-            console.print(f"[red]Branch '{branch_name}' not found[/red]")
-            raise typer.Exit(code=1)
-        
-        # Step 1: Save current branch artifacts to cache
-        if current_branch:
-            current_branch_name = current_branch.get("currentBranch")
-            console.print(f"[dim]Caching artifacts for '{current_branch_name}'...[/dim]")
-            _save_artifacts_to_cache(current_branch_name)
-        
-        # Step 2: Try to restore from cache (unless --no-cache flag)
-        artifacts_restored = False
-        if not no_cache:
-            artifacts_restored = _restore_artifacts_from_cache(branch_name)
-            if artifacts_restored:
-                console.print(f"[green]✓ Restored artifacts from cache[/green]")
-        
-        # Step 3: If not cached or --no-cache, download artifacts
-        if not artifacts_restored:
-            console.print(f"[dim]Downloading artifacts for '{branch_name}'...[/dim]")
-            if _download_branch_artifacts(repo_hash, branch_name):
-                _save_artifacts_to_cache(branch_name)
-                console.print(f"[green]✓ Artifacts downloaded and cached[/green]")
-        
-        # Step 4: Update HEAD to point to new branch
-        head_data = {
-            "currentBranch": branch_data.get("name"),
-            "branchHash": branch_data.get("branchHash"),
-            "description": branch_data.get("description")
-        }
-        _set_current_branch(head_data)
-        
-        # Step 5: Cleanup old caches (keep only 4 branches)
-        _cleanup_old_caches(max_branches=4)
-        
-        console.print(f"✓ Switched to branch '{branch_name}'", style="green")
-        
-    except typer.Exit:
-        raise
-    except Exception as e:
-        handle_cli_exception(e, context="Branch checkout", endpoint="/repo/hash/branch/get")
+    branches = _get_all_branches()
+    target_branch = next((b for b in branches if b.get("name") == branch_name), None)
+    
+    # If not found locally, try to fetch from remote
+    if not target_branch:
+        try:
+            remote_branches = api_client.get_branches(repo_hash)
+            for rb in remote_branches:
+                if rb.get("name") == branch_name:
+                    target_branch = rb
+                    branches.append(target_branch)
+                    _update_branches_cache(branches)
+                    break
+        except Exception:
+            pass
+
+    if not target_branch:
+        try:
+            remote_branch = api_client.get_branch_by_name(repo_hash, branch_name)
+            if remote_branch and not isinstance(remote_branch, list):
+                target_branch = remote_branch
+                branches.append(target_branch)
+                _update_branches_cache(branches)
+        except Exception:
+            pass
+    
+    if not target_branch:
+        console.print(f"[red]Branch '{branch_name}' not found[/red]")
+        raise typer.Exit(code=1)
+    
+    # Step 1: Save current branch artifacts to cache
+    if current_branch:
+        current_branch_name = current_branch.get("currentBranch")
+        console.print(f"[dim]Caching artifacts for '{current_branch_name}'...[/dim]")
+        _save_artifacts_to_cache(current_branch_name)
+    
+    # Step 2: Try to restore from cache (unless --no-cache flag)
+    artifacts_restored = False
+    if not no_cache:
+        artifacts_restored = _restore_artifacts_from_cache(branch_name)
+        if artifacts_restored:
+            console.print(f"[green]✓ Restored artifacts from cache[/green]")
+    
+    # Step 3: If not cached and remote is bound, attempt download
+    if not artifacts_restored and repo.get("remote") and not no_cache:
+        console.print(f"[dim]Downloading artifacts for '{branch_name}'...[/dim]")
+        if _download_branch_artifacts(repo_hash, branch_name):
+            _save_artifacts_to_cache(branch_name)
+            console.print(f"[green]✓ Artifacts downloaded and cached[/green]")
+    
+    # Step 4: Update HEAD to point to new branch
+    head_data = {
+        "currentBranch": target_branch.get("name"),
+        "branchHash": target_branch.get("branchHash"),
+        "description": target_branch.get("description")
+    }
+    _set_current_branch(head_data)
+    
+    # Step 5: Cleanup old caches (keep only 4 branches)
+    _cleanup_old_caches(max_branches=4)
+    
+    console.print(f"✓ Switched to branch '{branch_name}'", style="green")

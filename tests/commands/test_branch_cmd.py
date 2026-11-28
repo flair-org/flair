@@ -43,7 +43,9 @@ def test_branch_list_and_create(multi_actor_env, mock_backend, cli_runner):
         res_create = cli_runner.invoke(app, ["branch", "feature-exp1", "--description", "experiment branch"])
         assert res_create.exit_code == 0
         assert "created" in res_create.output.lower()
-        assert "feature-exp1" in mock_backend.branches
+        # In local-first architecture, branch is created locally with UUID v4
+        from flair_cli.cli.branch import _get_all_branches
+        assert any(b.get("name") == "feature-exp1" for b in _get_all_branches())
 
     # 3. List branches again
     with patch("flair_cli.cli.branch.api_client.get_branches", side_effect=mock_backend.get_branches):
