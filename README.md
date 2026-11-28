@@ -175,40 +175,22 @@ The reset command preserves the authentication session and repository data. It d
 
 ## Repository Commands
 
-### Create sample model files
+### New repository
 
-Generate sample model scaffolds to help you get started quickly. The generated files include example architectures and usage patterns.
+Use `flair init` in the project directory to initialize it as a Flair repository. Authentication is required first.
 
 ```bash
-flair new --example pytorch
-## ✓ PyTorch sample model created: model_pytorch.py
-## 
-## The file includes:
-##   • Sample CNN model class
-##   • Example save/load functions
-##   • Usage examples
-## 
-## To save your model for Flair:
-##   1. Modify the model as needed
-##   2. Run the script to generate model.pt
-##   3. Use 'flair params create --model model.pt'
-
-flair new --example tensorflow
-## ✓ TensorFlow sample model created: model_tensorflow.py
-## 
-## The file includes:
-##   • Sample CNN model (Sequential API)
-##   • Alternative Functional API example
-##   • Example save/load functions
-##   • Usage examples
-
-flair new --example pytorch --output my_model.py  # Custom output filename
-## ✓ PyTorch sample model created: my_model.py
+flair auth login
+flair init --name my-model --description "My model" --use-case "Image classification" --framework PyTorch
 ```
 
-**Note:** The generated files are only sample scaffolds. You are free to modify or ignore them. Flair does not require any specific architecture format.
+If `--name` is omitted, Flair uses the current directory name as the repository name. The default framework is PyTorch.
 
-### Init repository with automatic base model detection
+During initialization, Flair creates the `.flair` directory and repository metadata, including `repo.json`, `HEAD`, and the local directories used for parameters and commits. It also creates `config.yaml` and `.flairignore` when they do not already exist.
+
+#### Automatic base model detection
+
+`flair init` checks the current directory for supported base model files. When it finds one or more files, it offers to upload a selected file as the repository base model.
 
 ```bash
 flair init --description "My model"
@@ -220,19 +202,26 @@ flair init --description "My model"
 ## ✓ Base model uploaded successfully!
 ```
 
-### Skip base model prompt during init
+#### Skip the base model prompt
+
+Use `--skip-base-model` to initialize the repository without checking for or uploading a base model.
 
 ```bash
 flair init --skip-base-model
 ## ✓ Repository initialized without base model upload
 ```
 
-## cloning a repository
+Running `flair init` again in an already initialized directory reports the existing repository instead of recreating it.
 
-saves to .flair/repo.json and .flair/branch.json and creates three files
-saves repo metadata to .flair/repo.json plus branch pointers in .flair/HEAD and .flair/branches.json,
-and downloads the latest artifacts (base_model.<ext>, params.<ext>, zkml_proof.json,
-zkml_settings.json, zkml_verification_key.json) into the repo root
+### Clone an existing repository with flair clone
+
+Use `flair clone` to download an existing Flair repository into a local directory. It saves repository metadata to `.flair/repo.json`, branch pointers to `.flair/HEAD` and `.flair/branches.json`, and downloads the latest available artifacts into the target repository:
+
+- `base_model.<ext>`
+- `params.<ext>`
+- `zkml_proof.json`
+- `zkml_settings.json`
+- `zkml_verification_key.json`
 
 ```bash
 flair clone <repo_hash>
@@ -244,6 +233,23 @@ flair clone <repo_hash> --branch-hash main
 ## ✓ Downloaded base_model, params, zkml_proof, zkml_settings, zkml_verification_key
 ## Current branch: main
 ```
+
+### Create a sample model scaffold with flair new
+
+After or before repository setup, use `flair new` to generate a sample source file for PyTorch or TensorFlow.
+
+```bash
+flair new --example pytorch
+## ✓ PyTorch sample model created: model_pytorch.py
+
+flair new --example tensorflow
+## ✓ TensorFlow sample model created: model_tensorflow.py
+
+flair new --example pytorch --output my_model.py
+## ✓ PyTorch sample model created: my_model.py
+```
+
+`flair new` requires `--example` and supports `pytorch` or `tensorflow`. The generated file is a source-code scaffold containing a sample architecture and example save/load functions; it does not create a Flair repository and does not generate trained model weights. You can modify or ignore the scaffold.
 
 ## Remote Commands
 
