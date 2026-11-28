@@ -164,6 +164,7 @@ def test_exit_code_2_on_unauthorized_merge_commit_push(
         "message": "MERGE commit",
         "commitType": "CHECKPOINT",
         "status": "MERGER",
+        "mergedParentHashes": ["p1", "p2"],
         "previousCommitHash": None,
         "params": {"file": "params.pt"},
     }

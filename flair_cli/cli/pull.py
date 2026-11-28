@@ -83,7 +83,8 @@ def pull(
         for commit_data, _ in reversed(all_local_commits):
             ctype = commit_data.get("commitType")
             status = commit_data.get("status")
-            if ctype in ("CHECKPOINT", "MERGE") and status in ("MERGER", "MERGED"):
+            is_merge = bool(commit_data.get("mergedParentHashes")) or status in ("MERGER", "MERGED")
+            if ctype == "CHECKPOINT" and is_merge:
                 cursor_hash = commit_data.get("commitHash")
                 if cursor_hash:
                     break

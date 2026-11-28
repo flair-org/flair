@@ -59,13 +59,13 @@ def _verify_local_commit_chain(commits_to_push: list[tuple], remote_head_hash: s
             # Subsequent commits should reference the previous commit
             expected_parent = commits_to_push[idx - 1][0].get("commitHash") or ""
             if previous_hash != expected_parent:
-                merged_parents = set(commit_data.get("mergedCommits") or [])
-                metadata_parents = set(commit_data.get("metadata", {}).get("mergeParents") or [])
+                merged_parents = set(commit_data.get("mergedParentHashes") or [])
                 target_parent = commit_data.get("metadata", {}).get("mergeParent")
-                valid_merge_parents = merged_parents | metadata_parents
+                valid_merge_parents = set(merged_parents)
                 if target_parent:
                     valid_merge_parents.add(target_parent)
-                if commit_data.get("status") == "MERGER" and (previous_hash in valid_merge_parents or expected_parent in valid_merge_parents):
+                is_merge = bool(merged_parents) or commit_data.get("status") == "MERGER"
+                if is_merge and (previous_hash in valid_merge_parents or expected_parent in valid_merge_parents):
                     pass
                 else:
                     prev_display = str(previous_hash)[:16] if previous_hash else "None"
@@ -418,6 +418,7 @@ def push(
                     "localCommitHash": c_data.get("commitHash"),
                     "previousCommitHash": c_data.get("previousCommitHash"),
                     "commitType": c_data.get("commitType", "CHECKPOINT"),
+                    "mergedParentHashes": sorted(c_data.get("mergedParentHashes")) if c_data.get("mergedParentHashes") else None,
                     "message": c_data.get("message", ""),
                     "timestamp": c_data.get("timestamp"),
                     "params": c_data.get("params"),
@@ -453,8 +454,10 @@ def push(
             message = commit_data.get("message")
             commit_type = commit_data.get("commitType", "CHECKPOINT")
             commit_metrics = commit_data.get("metrics")
+            merged_parent_hashes = commit_data.get("mergedParentHashes")
+            is_merge_commit = bool(merged_parent_hashes) or commit_data.get("status") == "MERGER"
 
-            if commit_type == "MERGE" or commit_data.get("status") == "MERGER":
+            if is_merge_commit:
                 allowed, denial_reason = _can_publish_merge_commit(repo_config, target_branch_name, wallet_address)
                 if not allowed:
                     console.print(f"[red]✗ Commit {idx}: {denial_reason}[/red]")
@@ -653,6 +656,15 @@ def push(
             # Principal used for commit attribution (authenticated wallet or SSH principal).
             user_principal = wallet_address
 
+            # Remap any local UUIDs in mergedParentHashes to authoritative SHA-256 hashes before signing
+            raw_merged_parents = commit_data.get("mergedParentHashes")
+            if raw_merged_parents:
+                remapped_parents = [commit_hash_map.get(p, p) for p in raw_merged_parents]
+                commit_data["mergedParentHashes"] = remapped_parents
+                canonical_merged_parents = sorted(remapped_parents)
+            else:
+                canonical_merged_parents = None
+
             # Build canonical payload matching server structure (keep for SSH signing).
             canonical_payload = build_canonical_payload(
                 session_jti=session_jti,
@@ -664,6 +676,7 @@ def push(
                 commit_type=commit_type,
                 message=message,
                 metrics=commit_metrics,
+                merged_parent_hashes=canonical_merged_parents,
             )
             
             commit_signature = sign_canonical_payload(canonical_payload, ssh_identity)
@@ -674,23 +687,27 @@ def push(
             
             console.print(f"[dim]Commit signed (signature: {commit_signature[:16]}...)[/dim]")
             
+            finalize_payload = {
+                "sessionId": session_id,
+                "initiateToken": initiate_token,
+                "zkmlReceiptToken": zkml_receipt_token,
+                "paramsReceiptToken": params_receipt_token,
+                "signedAt": signed_at,
+                "message": message,
+                "paramHash": param_hash,
+                "architecture": framework,
+                "metrics": commit_metrics,
+                "commitSignature": commit_signature,
+                "sshKeyFingerprint": ssh_identity.fingerprint.replace("ssh:", "").strip(),
+                "commitType": commit_type,
+            }
+            if canonical_merged_parents is not None:
+                finalize_payload["mergedParentHashes"] = canonical_merged_parents
+
             with _client_with_auth() as client:
                 response = client.post(
                     f"{_base_url()}/api/repo/hash/{repo_hash}/branch/hash/{branch_hash}/commit/create/finalize",
-                    json={
-                        "sessionId": session_id,
-                        "initiateToken": initiate_token,
-                        "zkmlReceiptToken": zkml_receipt_token,
-                        "paramsReceiptToken": params_receipt_token,
-                        "signedAt": signed_at,
-                        "message": message,
-                        "paramHash": param_hash,
-                        "architecture": framework,
-                        "metrics": commit_metrics,
-                        "commitSignature": commit_signature,
-                        "sshKeyFingerprint": ssh_identity.fingerprint.replace("ssh:", "").strip(),
-                        "commitType": commit_type,
-                    }
+                    json=finalize_payload
                 )
                 response.raise_for_status()
                 finalize_data = response.json()

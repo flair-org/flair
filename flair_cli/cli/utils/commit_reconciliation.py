@@ -73,8 +73,8 @@ def apply_commit_hash_reconciliation(commit_hash_map: dict[str, str], branch_hea
                     cdata["parentCommit"] = commit_hash_map[cdata["parentCommit"]]
 
                 # Remap merge parents if present
-                if "mergedCommits" in cdata:
-                    cdata["mergedCommits"] = [commit_hash_map.get(m, m) for m in cdata["mergedCommits"]]
+                if "mergedParentHashes" in cdata and isinstance(cdata["mergedParentHashes"], list):
+                    cdata["mergedParentHashes"] = [commit_hash_map.get(m, m) for m in cdata["mergedParentHashes"]]
 
                 with open(commit_file, "w", encoding="utf-8") as f:
                     json.dump(cdata, f, indent=2)

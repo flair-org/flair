@@ -88,7 +88,7 @@ def add(
             "previousClassSpaceHash": None,
             "classSpaceChanged": False,
             "mergeStrategy": None,
-            "mergeParents": None,
+            "mergedParentHashes": None,
             "createdAt": None
         }
         

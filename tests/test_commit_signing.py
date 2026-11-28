@@ -32,8 +32,42 @@ class CanonicalPayloadTest(unittest.TestCase):
                 '"architecture":"pytorch",'
                 '"architectureHash":null,'
                 '"commitType":"CHECKPOINT",'
+                '"mergedParentHashes":null,'
                 '"message":"initial commit",'
                 '"metrics":{"accuracy":0.99,"nested":{"a":1,"b":2}}}'
+            ),
+        )
+
+    def test_canonicalize_payload_with_merged_parent_hashes(self) -> None:
+        payload = build_canonical_payload(
+            session_jti="session-123",
+            signed_at="2026-07-07T12:00:00Z",
+            params_ipfs_id="params-cid",
+            param_hash="param-hash",
+            previous_commit_hash="parent-hash",
+            architecture="pytorch",
+            commit_type="CHECKPOINT",
+            message="merge commit",
+            metrics=None,
+            merged_parent_hashes=["parent-2", "parent-1"],
+        )
+
+        canonical_json = canonicalize_payload(payload)
+
+        self.assertEqual(
+            canonical_json,
+            (
+                '{"sessionJti":"session-123",'
+                '"signedAt":"2026-07-07T12:00:00Z",'
+                '"paramsIpfsId":"params-cid",'
+                '"paramHash":"param-hash",'
+                '"previousCommitHash":"parent-hash",'
+                '"architecture":"pytorch",'
+                '"architectureHash":null,'
+                '"commitType":"CHECKPOINT",'
+                '"mergedParentHashes":["parent-1","parent-2"],'
+                '"message":"merge commit",'
+                '"metrics":{}}'
             ),
         )
 

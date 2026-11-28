@@ -50,7 +50,7 @@ def _is_merge_eligible_commit(commit_data: dict[str, Any], commit_dir: Path) -> 
 
 def _find_last_merge_cursor(commits: list[tuple[dict[str, Any], Path]]) -> str:
     for commit_data, _ in reversed(commits):
-        if commit_data.get("commitType") == "CHECKPOINT" and commit_data.get("status") == "MERGER":
+        if commit_data.get("commitType") == "CHECKPOINT" and (commit_data.get("status") == "MERGER" or bool(commit_data.get("mergedParentHashes"))):
             return commit_data.get("commitHash") or "_GENESIS_COMMIT_"
     for commit_data, _ in reversed(commits):
         if commit_data.get("commitType") == "CHECKPOINT":
@@ -318,12 +318,10 @@ def create_merge_candidate(
             "metrics": {
                 "num_examples": int(sum(weights))
             },
-            "mergedCommits": parent_hashes,
+            "mergedParentHashes": parent_hashes,
             "metadata": {
                 "mergeStrategy": "fedavg",
-                "mergeParents": parent_hashes,
                 "mergeParent": target_parent,
-                "mergeof": parent_hashes
             }
         }
 

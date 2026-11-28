@@ -34,6 +34,14 @@ _Avoid_: Commit workflow, staging pipeline
 The process where an Admin combines one or more Contributor parameter updates and stages an authoritative checkpoint commit on a branch.
 _Avoid_: Weight aggregation, Git merge, sync
 
+**Federated Merge Commit**:
+A checkpoint commit created by a federated merge that records full model parameters and explicit merged parent hashes.
+_Avoid_: Merge commit type, merged commit, merge snapshot
+
+**Merged Parent Hashes**:
+The ordered cryptographic hashes of all parent commits whose parameter weights were combined into a federated merge commit.
+_Avoid_: Merge parents, merged commits, parent hashes
+
 ## Verification & Proofs
 
 **Zero-Knowledge Proof (ZKP)**:

@@ -44,11 +44,13 @@ def build_canonical_payload(
     commit_type: str,
     message: str,
     metrics: Optional[Dict[str, Any]] = None,
+    merged_parent_hashes: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """
     Build canonical commit payload with deterministic field order.
     Must match server-side CanonicalCommitPayload exactly.
     """
+    sorted_merged = sorted(list(merged_parent_hashes)) if merged_parent_hashes else None
     return {
         "sessionJti": session_jti,
         "signedAt": signed_at,
@@ -58,6 +60,7 @@ def build_canonical_payload(
         "architecture": architecture,
         "architectureHash": None,
         "commitType": commit_type,
+        "mergedParentHashes": sorted_merged,
         "message": message,
         "metrics": normalize_json_value(metrics or {}),
     }
