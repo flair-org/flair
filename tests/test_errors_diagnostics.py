@@ -30,6 +30,16 @@ def test_match_endpoint_category():
     assert _match_endpoint_category("/api/repo/hash/abc/branch/hash/def/commit/create/zkml-upload") == "commit_zkml_upload"
     assert _match_endpoint_category("/api/repo/hash/abc/branch/hash/def/commit/create/params-upload") == "commit_params_upload"
     assert _match_endpoint_category("/api/repo/hash/abc/branch/hash/def/commit/create/finalize") == "commit_finalize"
+    seqpush_endpoint_categories = {
+        "initiate": "commit_initiate",
+        "zkml-check": "commit_zkml_check",
+        "zkml-upload": "commit_zkml_upload",
+        "params-upload": "commit_params_upload",
+        "finalize": "commit_finalize",
+    }
+    for endpoint, category in seqpush_endpoint_categories.items():
+        path = f"/api/repo/hash/abc/branch/hash/def/commit/seqpush/create/{endpoint}"
+        assert _match_endpoint_category(path) == category
     assert _match_endpoint_category("/api/repo/hash/abc/branch/hash/def/commit/status/sync") == "commit_status_sync"
     assert _match_endpoint_category("/api/repo/hash/abc/branch/hash/def/commit/hash/ghi/pull") == "commit_pull"
     assert _match_endpoint_category("/api/user/keys") == "user_keys"

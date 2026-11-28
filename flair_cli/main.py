@@ -22,7 +22,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from flair_cli.cli import auth, config, init, clone, remote, basemodel, branch, add, zkp, push, pull, params, new, commit, revert, reset, metrics, merge, status as status_cmd, log as log_cmd, diff as diff_cmd
+from flair_cli.cli import auth, config, init, clone, remote, basemodel, branch, add, zkp, push, seqpush, pull, params, new, commit, revert, reset, metrics, merge, status as status_cmd, log as log_cmd, diff as diff_cmd
 
 app = typer.Typer(help="Flair - versioning Machine Learning models")
 console = Console()
@@ -43,7 +43,8 @@ app.command(name="clone", help="Clone a remote repository")(clone.clone)
 app.command(name="new", help="Create sample model files")(new.new)
 app.command(name="add", help="Create a new local commit")(add.add)
 app.command(name="commit", help="Finalize commit with message and determine type")(commit.finalize)
-app.command(name="push", help="Push commits to remote repository")(push.push)
+app.command(name="push", help="Push commits to remote repository via manifest handshake")(push.push)
+app.command(name="seqpush", help="Push commits sequentially using legacy 5-step RPCs (backward compatibility)")(seqpush.seqpush)
 app.command(name="pull", help="Pull latest commit statuses from remote")(pull.pull)
 app.command(name="revert", help="Revert to previous commit")(revert.revert)
 app.command(name="reset", help="Reset HEAD to previous local commit")(reset.reset)

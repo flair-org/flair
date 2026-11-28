@@ -387,10 +387,17 @@ def checkout(
             console.print(f"[green]✓ Artifacts downloaded and cached[/green]")
     
     # Step 4: Update HEAD to point to new branch
+    previous_commit = target_branch.get("latestCommitHash") or (
+        current_branch.get("previousCommit")
+        if current_branch and target_branch.get("parentBranchHash") == current_branch.get("branchHash")
+        else None
+    )
     head_data = {
         "currentBranch": target_branch.get("name"),
         "branchHash": target_branch.get("branchHash"),
-        "description": target_branch.get("description")
+        "description": target_branch.get("description"),
+        "previousCommit": previous_commit,
+        "latestCommitHash": previous_commit
     }
     _set_current_branch(head_data)
     

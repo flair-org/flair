@@ -732,101 +732,12 @@ The `flair push` command synchronizes local commits with the remote FlairHub rep
 - **Atomic Two-Phase Reconciliation**: The server generates authoritative SHA-256 commit hashes from canonical JSON. The CLI writes `.flair/pending_reconciliation.json` and atomically renames local commit directories from temporary UUIDs to authoritative SHA-256 digests. If interrupted, the rename automatically completes on the next command.
 
 ```bash
-# First push - single CHECKPOINT commit (genesis)
 flair push -u origin main
-## Verifying local commit chain integrity...
-## ✓ Local chain verified
-## 
-## Pushing to branch: main
-## ✓ Push Manifest Handshake negotiated with backend
-## 
-## Remote HEAD: Genesis (no commits yet)
-## Pushing 1 commit(s) serially...
-## 
-## ═══ Commit 1/1 ═══
-## Hash: a1b2c3d4-e5f6-...
-## Type: CHECKPOINT
-## Message: Initial model commit
-## Parent: Genesis...
-## 
-## Step 1/5: Initiating commit session...
-## ✓ Session initiated
-## Step 2/5: Checking ZKML proof uniqueness...
-## ✓ ZKML proof verified as unique
-## Step 3/5: Uploading ZKML proofs...
-## ✓ ZKML proofs uploaded
-## Step 4/5: Uploading parameters...
-## ✓ Parameters uploaded (hash: 1a2b3c4d...)
-## Step 5/5: Finalizing commit...
-## ✓ Commit 1 created successfully!
-##   Hash: 4a7d8e9f... (Authoritative SHA-256)
-##   Type: CHECKPOINT
-##   Local commit updated with server hash
-## 
-## ═══════════════════════════════════
-## ✓ Push complete!
-##   Branch: main
-##   Commits pushed: 1/1
-##   Latest commit: 4a7d8e9f...
-## ═══════════════════════════════════
-## 
-## ✓ HEAD updated
-
-# Batch push - multiple DELTA commits at once
-flair push main
-## Verifying local commit chain integrity...
-## ✓ Local chain verified
-## 
-## Pushing to branch: main
-## ✓ Push Manifest Handshake negotiated with backend
-## 
-## Found 4 local commit(s)
-## Remote HEAD: 4a7d8e9f...
-## Skipping incomplete commit: z9y8x7w6...  # Skipped until finalized
-## Pushing 3 commit(s) serially...
-## 
-## ═══ Commit 1/3 ═══
-## Hash: b2c3d4e5...
-## Type: DELTA
-## Message: Updated with training data v2
-## Parent: 4a7d8e9f...
-## [... uploads missing artifacts ...]
-## ✓ Commit 1 created successfully!
-##   Hash: 5b8e9f0a... (Authoritative SHA-256)
-##   Type: DELTA
-##   Local commit updated with server hash
-## 
-## ═══ Commit 2/3 ═══
-## Hash: c3d4e5f6...
-## Type: DELTA
-## Message: Improved accuracy to 95%
-## Parent: 5b8e9f0a...
-## [... uploads missing artifacts ...]
-## ✓ Commit 2 created successfully!
-##   Hash: 6c9f0a1b... (Authoritative SHA-256)
-##   Type: DELTA
-##   Local commit updated with server hash
-## 
-## ═══ Commit 3/3 ═══
-## Hash: d4e5f6g7...
-## Type: DELTA
-## Message: Fine-tuned hyperparameters
-## Parent: 6c9f0a1b...
-## [... uploads missing artifacts ...]
-## ✓ Commit 3 created successfully!
-##   Hash: 7d0a1b2c... (Authoritative SHA-256)
-##   Type: DELTA
-##   Local commit updated with server hash
-## 
-## ═══════════════════════════════════
-## ✓ Push complete!
-##   Branch: main
-##   Commits pushed: 3/3
-##   Latest commit: 7d0a1b2c...
-## ═══════════════════════════════════
-## 
-## ✓ HEAD updated
 ```
+
+`flair push` negotiates the full local commit DAG with `POST /api/repo/hash/{repoHash}/push/manifest`, uploads only artifacts reported missing, and submits signed envelopes together to `POST /api/repo/hash/{repoHash}/push/finalize`. If the remote already has all commits, it reconciles the known local UUIDs and exits without uploading or finalizing.
+
+The legacy `flair seqpush` command remains available for diagnostics and compatibility. It publishes each commit using five per-commit requests and uses the distinct route family `/api/repo/hash/{repoHash}/branch/hash/{branchHash}/commit/seqpush/create/{initiate,zkml-check,zkml-upload,params-upload,finalize}`. The original unprefixed `/commit/create/*` routes remain backend compatibility aliases. Both workflows use the same unprefixed ZKML and parameter artifact-upload routes; the manifest push uses the pre-authorized sessions returned by negotiation.
 
 **Push Error Handling:**
 - **Unlinked Remote**: Stops before upload if remote repository is missing or not configured.

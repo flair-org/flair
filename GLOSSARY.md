@@ -34,12 +34,12 @@ _Avoid_: Commit workflow, staging pipeline
 The process where an Admin combines one or more Contributor parameter updates and stages an authoritative checkpoint commit on a branch.
 _Avoid_: Weight aggregation, Git merge, sync
 
-**Federated Merge Commit**:
-A checkpoint commit created by a federated merge that records full model parameters and explicit merged parent hashes.
-_Avoid_: Merge commit type, merged commit, merge snapshot
+**Merge Checkpoint**:
+A checkpoint commit created by a federated merge that records full model parameters and combines model history from multiple parent commits; its ordered parent references preserve the primary lineage and merged sources.
+_Avoid_: Merge commit type, merged commit, merge snapshot, federated merge commit
 
 **Merged Parent Hashes**:
-The ordered cryptographic hashes of all parent commits whose parameter weights were combined into a federated merge commit.
+The ordered cryptographic hashes of all parent commits whose parameter weights were combined into a merge checkpoint.
 _Avoid_: Merge parents, merged commits, parent hashes
 
 ## Verification & Proofs
@@ -58,6 +58,14 @@ _Avoid_: Push payload, push request, sync packet
 The negotiation phase of `flair push` where the backend evaluates the Push Manifest and responds with the exact set of missing commits, parameters, and proof artifacts to be transferred.
 _Avoid_: Upload negotiation, push sync, pack negotiation
 
+**Manifest Push**:
+A synchronization workflow that negotiates the local commit DAG, transfers only missing artifacts, and finalizes new commits as a batch.
+_Avoid_: Sequential push
+
+**Sequential Push (seqpush)**:
+A compatibility and diagnostic workflow (`flair seqpush`) that publishes each commit through its own five-request creation sequence rather than negotiating and finalizing a batch.
+_Avoid_: Legacy push, direct push, slow push
+
 **Commit Hash Reconciliation**:
 The atomic process where the CLI replaces temporary local commit UUIDs and parent pointers with the authoritative SHA-256 hashes returned by the backend after push completion.
 _Avoid_: Hash overwrite, commit remapping, commit sync
@@ -65,6 +73,14 @@ _Avoid_: Hash overwrite, commit remapping, commit sync
 **Local-First Workspace**:
 A Flair repository initialized and operated entirely on the local machine with offline UUID v4 identifiers, requiring no backend communication until an explicit push.
 _Avoid_: Offline repo, unlinked repo, detached workspace
+
+**Local Commit Identity**:
+A client-generated identifier (UUID v4) for a commit before it receives its authoritative FlairHub identity upon push finalization.
+_Avoid_: Remote commit hash, temporary hash
+
+**Authoritative Commit Hash**:
+The server-assigned SHA-256 identity of a commit after its signed metadata and stored parameter/proof artifacts have been validated and persisted.
+_Avoid_: Local commit UUID, temporary commit hash
 
 ## Security & Authentication
 

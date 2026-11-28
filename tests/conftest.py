@@ -222,6 +222,8 @@ class MockFederatedBackend:
         }
         self.commits: dict[str, dict] = {}
         self.keys = [{"fingerprint": "SHA256:mockfingerprint123456789", "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockKey"}]
+        self.call_counts: dict[str, int] = {}
+        self.received_finalize_payloads: list[dict] = []
 
     def create_repo(self, payload):
         self.repo_name = payload.get("name", self.repo_name)
@@ -334,42 +336,87 @@ class MockFederatedBackend:
         resp.status_code = 200
         url_str = str(url)
 
+        endpoint_key = url_str.split("/api/")[-1] if "/api/" in url_str else url_str
+        self.call_counts[endpoint_key] = self.call_counts.get(endpoint_key, 0) + 1
+
         if "push/manifest" in url_str:
             json_body = kwargs.get("json", {})
             bname = json_body.get("targetBranch", {}).get("name", "main")
+            self._current_push_branch = bname
             commits_in_manifest = json_body.get("commits", [])
+
+            existing_commit_hash_map = {}
+            missing_commits = []
+
+            known_hashes = set()
+            local_to_auth = {}
+            for k, val in self.commits.items():
+                known_hashes.add(k)
+                if isinstance(val, dict):
+                    c_sha = val.get("commitHash") or k
+                    l_id = val.get("localCommitHash")
+                    if l_id:
+                        local_to_auth[l_id] = c_sha
+                    known_hashes.add(c_sha)
+            if bname in self.branches:
+                for c_sha in self.branches[bname].get("commits", []):
+                    known_hashes.add(c_sha)
+
+            for c in commits_in_manifest:
+                lch = c.get("localCommitHash")
+                if lch in local_to_auth:
+                    existing_commit_hash_map[lch] = local_to_auth[lch]
+                elif lch in known_hashes:
+                    existing_commit_hash_map[lch] = lch
+                else:
+                    missing_commits.append({
+                        "localCommitHash": lch,
+                        "needsParams": True,
+                        "needsZkp": c.get("commitType") != "CHECKPOINT",
+                        "sessionId": f"mock-session-{lch}",
+                        "initiateToken": make_mock_jwt({"jti": f"mock-jti-{lch}", "sub": "test-user"}),
+                        "zkmlToken": "mock-zkml-token-555"
+                    })
+
+            is_up_to_date = (len(commits_in_manifest) > 0 and len(missing_commits) == 0)
+
             resp.json.return_value = {
                 "data": {
                     "pushSessionId": "mock-push-session-123",
-                    "status": "NEGOTIATED",
+                    "status": "UP_TO_DATE" if is_up_to_date else "NEGOTIATED",
                     "branchHash": f"branch-{bname}-hash",
-                    "upToDate": False,
-                    "missingCommits": [
-                        {
-                            "localCommitHash": c.get("localCommitHash"),
-                            "needsParams": True,
-                            "needsZkp": c.get("commitType") != "CHECKPOINT",
-                            "sessionId": f"mock-session-{c.get('localCommitHash')}",
-                            "initiateToken": make_mock_jwt({"jti": f"mock-jti-{c.get('localCommitHash')}", "sub": "test-user"})
-                        }
-                        for c in commits_in_manifest
-                    ]
+                    "upToDate": is_up_to_date,
+                    "existingCommitHashMap": existing_commit_hash_map,
+                    "missingCommits": missing_commits
                 }
             }
         elif "push/finalize" in url_str:
             json_body = kwargs.get("json", {})
+            self.received_finalize_payloads.append(json_body)
+            envelopes = json_body.get("commits", [])
             completed = json_body.get("completedCommits", [])
+            if envelopes:
+                commit_ids = [e.get("localCommitHash") for e in envelopes if isinstance(e, dict)]
+            else:
+                commit_ids = completed
+            bname = getattr(self, "_current_push_branch", "main")
+            base_count = len(self.branches[bname]["commits"]) if bname in self.branches else len(self.commits)
             hash_map = {
-                c_uuid: f"sha256-authoritative-{idx+1}-{c_uuid[:8]}"
-                for idx, c_uuid in enumerate(completed)
+                c_uuid: f"sha256-authoritative-{base_count + idx + 1}-{c_uuid[:8]}"
+                for idx, c_uuid in enumerate(commit_ids)
             }
+            for c_uuid, c_sha in hash_map.items():
+                self.commits[c_sha] = {"commitHash": c_sha, "localCommitHash": c_uuid}
+                if bname in self.branches:
+                    if c_sha not in self.branches[bname]["commits"]:
+                        self.branches[bname]["commits"].append(c_sha)
             latest_hash = list(hash_map.values())[-1] if hash_map else "sha256-head"
             resp.json.return_value = {
                 "data": {
                     "success": True,
                     "branchHead": latest_hash,
                     "commitHashMap": hash_map,
-                    "verificationStatus": "PENDING_VERIFICATION"
+                    "verificationStatus": "PENDING"
                 }
             }
         elif "commit/create/initiate" in url_str:

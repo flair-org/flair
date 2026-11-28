@@ -98,7 +98,11 @@ The backend validates parentage, registers `targetBranch` if it is a new branch,
     "pushSessionId": "uuid-v4-push-session",
     "status": "NEGOTIATED",
     "branchHash": "uuid-v4-branch-hash",
+    "branchId": "branch-id",
     "upToDate": false,
+    "existingCommitHashMap": {
+      "uuid-v4-previously-pushed": "sha256-authoritative"
+    },
     "missingCommits": [
       {
         "localCommitHash": "uuid-v4-commit-1",
@@ -106,27 +110,48 @@ The backend validates parentage, registers `targetBranch` if it is a new branch,
         "needsZkp": false,
         "sessionId": "uuid-v4-commit-session",
         "initiateToken": "jwt-token",
-        "zkmlReceiptToken": "jwt-token-or-null"
+        "zkmlToken": "jwt-preauth-token",
+        "zkmlReceiptToken": "jwt-token-or-null",
+        "paramsReceiptToken": "jwt-token-or-null"
       }
     ]
   }
 }
 ```
 
+> [!NOTE]
+> If `upToDate` is `true` (`missingCommits` is empty), Phase 2 is terminal: the client applies Commit Hash Reconciliation immediately from `existingCommitHashMap` and skips artifact uploads and Phase 4 finalization.
+
 #### Phase 3: Serial Artifact Upload
 For each commit listed in `missingCommits`, the CLI uploads the missing parameter tensors and ZKP files serially using pre-authorized session tokens. This ensures backward compatibility with existing `/zkml-upload` and `/params-upload` endpoints without modifying weight upload storage handlers.
 
-#### Phase 4: Finalization and Commit Hash Reconciliation
-Once all missing payloads have been uploaded, the CLI calls:
+#### Phase 4: Batch Finalization and Commit Hash Reconciliation
+Once all missing payloads have been uploaded, the CLI submits signed envelopes for all missing commits to:
 `POST /api/repo/hash/{repoHash}/push/finalize`
 
 **Request Schema:**
 ```json
 {
   "pushSessionId": "uuid-v4-push-session",
-  "repoHash": "remote-repo-hash",
-  "branchHash": "branch-hash",
-  "completedCommits": ["uuid-v4-commit-1"]
+  "commits": [
+    {
+      "localCommitHash": "uuid-v4-commit-1",
+      "sessionId": "uuid-v4-commit-session",
+      "initiateToken": "jwt-initiate-token",
+      "zkmlReceiptToken": "jwt-zkml-receipt-token",
+      "paramsReceiptToken": "jwt-params-receipt-token",
+      "signedAt": "2026-11-28T12:05:00Z",
+      "message": "Model update",
+      "paramHash": "sha256-weights-digest",
+      "architecture": "pytorch",
+      "metrics": {},
+      "commitType": "CHECKPOINT",
+      "commitSignature": "base64-ssh-signature",
+      "sshKeyFingerprint": "key-fingerprint",
+      "previousCommitHash": "sha256-primary-parent",
+      "parentCommitHashes": ["sha256-primary-parent"]
+    }
+  ]
 }
 ```
 
@@ -137,12 +162,16 @@ Once all missing payloads have been uploaded, the CLI calls:
     "success": true,
     "branchHead": "4a7d...authoritative-sha256",
     "commitHashMap": {
+      "uuid-v4-previously-pushed": "sha256-previously-known",
       "uuid-v4-commit-1": "4a7d...authoritative-sha256"
     },
-    "verificationStatus": "PENDING_VERIFICATION"
+    "verificationStatus": "PENDING"
   }
 }
 ```
+
+> [!NOTE]
+> The checked-in `flair push` command implements manifest negotiation, serial upload of missing artifacts, batch finalization, and journaled local hash reconciliation. The separate `flair seqpush` compatibility command retains the per-commit five-request flow and uses `/repo/hash/:repoHash/branch/hash/:branchHash/commit/seqpush/create/*`. The original `/commit/create/*` routes remain available as compatibility aliases. Both commands use the existing ZKML/parameter upload handlers; the manifest push continues to call their original unprefixed paths.
 
 ### 4. Group Commit Hash Reconciliation in CLI
 Upon receiving `commitHashMap`:
@@ -163,5 +192,6 @@ The push response assigns commits an initial verification status (`PENDING_VERIF
 - **Positive**: `flair init` and `flair branch` work completely offline without network latency or credential requirements.
 - **Positive**: Network overhead during push is dramatically reduced by negotiating missing objects in a single manifest request.
 - **Positive**: Interrupted pushes can be safely resumed without duplicating records or corrupting the DAG.
-- **Backend Reference**: Backend engineers have a concrete contract to implement the `/push/manifest` and `/push/finalize` endpoints.
+- **Backend Reference**: The backend implements `/push/manifest` and `/push/finalize` as the batch synchronization contract.
+- **Compatibility**: `flair seqpush` has a command-specific route namespace while the original per-commit routes remain available to existing clients and debugging workflows.
 - **Trade-off**: Commit hashes on the client are mutable between local creation (UUID v4) and remote push (authoritative SHA-256). The journaled reconciliation step ensures local integrity across this transition.

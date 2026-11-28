@@ -345,6 +345,7 @@ _OPENAPI_ERROR_MAP: dict[str, dict[int, tuple[str, str]]] = {
 def _match_endpoint_category(endpoint_or_url: str) -> str:
     """Classify request URL / endpoint into OpenAPI category."""
     e = endpoint_or_url.lower()
+    e = e.replace("/commit/seqpush/create/", "/commit/create/")
 
     if "/repo/create" in e or e == "create_repo":
         return "repo_create"

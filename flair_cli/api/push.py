@@ -1,6 +1,6 @@
 """Push API operations: Push Manifest Handshake and Finalization."""
 from typing import Dict, Any
-from .utils import _client_with_auth
+from .utils import _base_url, _client_with_auth
 
 
 def push_manifest(repo_hash: str, manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -13,8 +13,14 @@ def push_manifest(repo_hash: str, manifest: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Negotiation response with missingCommits and session tokens
     """
-    with _client_with_auth() as client:
-        r = client.post(f"/repo/hash/{repo_hash}/push/manifest", json=manifest)
+    try:
+        import sys
+        _c_auth = getattr(sys.modules.get("flair_cli.cli.push"), "_client_with_auth", _client_with_auth)
+    except Exception:
+        _c_auth = _client_with_auth
+
+    with _c_auth() as client:
+        r = client.post(f"{_base_url()}/api/repo/hash/{repo_hash}/push/manifest", json=manifest)
         r.raise_for_status()
         res_data = r.json()
         return res_data.get("data", res_data)
@@ -30,8 +36,14 @@ def push_finalize(repo_hash: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Finalization response with commitHashMap and branchHead
     """
-    with _client_with_auth() as client:
-        r = client.post(f"/repo/hash/{repo_hash}/push/finalize", json=payload)
+    try:
+        import sys
+        _c_auth = getattr(sys.modules.get("flair_cli.cli.push"), "_client_with_auth", _client_with_auth)
+    except Exception:
+        _c_auth = _client_with_auth
+
+    with _c_auth() as client:
+        r = client.post(f"{_base_url()}/api/repo/hash/{repo_hash}/push/finalize", json=payload)
         r.raise_for_status()
         res_data = r.json()
         return res_data.get("data", res_data)
